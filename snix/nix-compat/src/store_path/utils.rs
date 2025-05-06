@@ -208,6 +208,45 @@ pub fn hash_placeholder(name: &str) -> String {
     format!("/{}", nixbase32::encode(&digest))
 }
 
+pub fn hash_upstream_placeholder(store_prefix: &str, drv_path: &str, output_name: &str) -> Result<String, String> {
+    let drv_postfix = ".drv";
+    let drv_path_front = drv_path.strip_suffix(drv_postfix)
+        .ok_or_else(|| format!("Expected derivation path '{}' to end with '{}'", drv_path, drv_postfix))?;
+
+    let drv_hash_and_name = drv_path_front.strip_prefix(store_prefix)
+        .ok_or_else(|| format!("Expected derivation path '{}' to start with store prefix '{}'", drv_path_front, store_prefix))?;
+
+    let hash_str_length = 32;
+
+    if drv_hash_and_name.len() < hash_str_length + 2 {
+        return Err(format!("Invalid derivation path: '{}' is too short", drv_hash_and_name));
+    }
+
+    let drv_hash = &drv_hash_and_name[..hash_str_length];
+    if drv_hash.bytes().any(|b| !(b.is_ascii_lowercase() || b.is_ascii_digit())) {
+        return Err(format!("Invalid derivation path: hash part '{}' contains invalid characters", drv_hash));
+    }
+
+    let drv_hash_and_name_separator = drv_hash_and_name.chars().nth(hash_str_length).unwrap();
+    if drv_hash_and_name_separator != '-' {
+        return Err(format!("Invalid derivation path: expected '-' between hash and name but got '{}'", drv_hash_and_name_separator));
+    }
+
+    let drv_name = &drv_hash_and_name[(hash_str_length+1)..];
+
+    let output_suffix = if output_name != "out" {
+        format!("-{}", output_name)
+    } else {
+        String::new()
+    };
+
+    let digest = Sha256::new_with_prefix(
+        format!("nix-upstream-output:{}:{}{}", drv_hash, drv_name, output_suffix)
+    ).finalize();
+
+    Ok(format!("/{}", nixbase32::encode(&digest)))
+}
+
 #[cfg(test)]
 mod test {
     use hex_literal::hex;
