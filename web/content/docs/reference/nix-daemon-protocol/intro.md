@@ -22,4 +22,4 @@ A first implementation of this exists in
 [griff/Nix.rs](https://github.com/griff/Nix.rs/tree/main).
 
 Work is underway to port / factor this out into reusable building blocks into
-the [nix-compat](https://snix.dev//rustdoc/nix_compat/index.html) crate.
+the [nix-compat](https://snix.dev/rustdoc/nix_compat/index.html) crate.

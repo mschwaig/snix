@@ -14,7 +14,8 @@ This diagram gives an overview over the different crates in the repository, the
 different contained components and the dependencies in between them.
 
 If you scroll further down, you find a textual description of what each component does.
-Check the individual documentation pages for more details.
+Check the individual documentation pages here for more details, or take a look at our
+[rustdoc API docs](https://snix.dev/rustdoc/nix_compat/index.html).
 
 {{< inline-svg src="crate-diagram.svg" width="100%" height="800px" class="svg-inline-custom" >}}
 
