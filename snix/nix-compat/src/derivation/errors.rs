@@ -45,6 +45,10 @@ pub enum DerivationError {
     // environment
     #[error("invalid environment key {0}")]
     InvalidEnvironmentKey(String),
+    
+    // ATerm parsing
+    #[error("invalid ATerm format: {0}")]
+    InvalidATermError(String),
 }
 
 /// Errors that can occur during the validation of a specific

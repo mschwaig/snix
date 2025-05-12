@@ -25,6 +25,224 @@ pub use parser::Error as ParserError;
 
 use self::write::AtermWriteable;
 
+/// Calculates a derivation path from an ATerm representation without fully parsing it.
+///
+/// This function extracts only the necessary reference information from the ATerm 
+/// representation to calculate the store path, without constructing a complete
+/// Derivation object. It's designed to be resilient to changes in the ATerm format
+/// and efficiently calculate paths for derivations.
+///
+/// # Arguments
+///
+/// * `name` - The name of the derivation (used in the resulting path)
+/// * `aterm_str` - The ATerm string representation of the derivation
+///
+/// # Returns
+///
+/// * `Result<String, DerivationError>` - The calculated store path or an error
+pub fn calculate_derivation_path_from_aterm(
+    name: &str,
+    aterm_str: &[u8],
+) -> Result<String, DerivationError> {
+    // Append .drv to the name
+    let name = format!("{}.drv", name);
+    
+    // Extract the references from the derivation ATerm
+    let references = extract_references_from_aterm(aterm_str)?;
+    
+    // Use the same path building function as the method does, 
+    // directly with the provided ATerm string
+    let store_path: crate::store_path::StorePath<String> = crate::store_path::build_text_path(&name, aterm_str, references)
+        .map_err(|_e| DerivationError::InvalidOutputName(name))?;
+
+    Ok(store_path.to_absolute_path())
+}
+
+/// Extracts only the references from a derivation ATerm.
+/// 
+/// This is a minimal parser that only looks for input derivations and input sources
+/// within the ATerm, without validating the other fields. It directly extracts the
+/// referenced store paths without requiring the ATerm to be fully parseable.
+fn extract_references_from_aterm(aterm_str: &[u8]) -> Result<std::collections::BTreeSet<String>, DerivationError> {
+    // Derivation ATerm format:
+    // Derive([outputs...],[input_derivations...],[input_sources...],system,builder,args,env)
+    
+    let aterm_str = std::str::from_utf8(aterm_str)
+        .map_err(|e| DerivationError::InvalidATermError(format!("Invalid UTF-8 in ATerm: {}", e)))?;
+    
+    // Create an empty set to collect references
+    let mut references = std::collections::BTreeSet::new();
+    
+    // Look for input sources list - this is the third parameter to Derive
+    // It appears as a list like: ["/nix/store/path1","/nix/store/path2",...]
+    
+    // Find where the third bracket starts
+    if let Some(input_sources_start) = find_nth_list_start(aterm_str, 3) {
+        // Find where the list ends
+        if let Some(input_sources_end) = find_matching_bracket(aterm_str, input_sources_start) {
+            // Extract input sources list content
+            let input_sources_list = &aterm_str[input_sources_start + 1..input_sources_end];
+            
+            // Parse the list items
+            for path in parse_string_list(input_sources_list) {
+                // Only add store paths
+                if path.starts_with("/nix/store/") {
+                    references.insert(path);
+                }
+            }
+        }
+    }
+    
+    // Look for input derivations, which is the second parameter
+    // ATerm format for input derivations is more complex and involves key-value pairs
+    // But for our purpose, we just need to extract any store paths
+    
+    // Find where the second bracket starts
+    if let Some(input_derivs_start) = find_nth_list_start(aterm_str, 2) {
+        // Find where the list ends
+        if let Some(input_derivs_end) = find_matching_bracket(aterm_str, input_derivs_start) {
+            // Extract input derivations list content
+            let input_derivs_list = &aterm_str[input_derivs_start + 1..input_derivs_end];
+            
+            // Parse the list items, looking for store paths
+            for path in input_derivs_list.split(',') {
+                if let Some(store_path) = extract_store_path(path) {
+                    references.insert(store_path.to_string());
+                }
+            }
+        }
+    }
+    
+    // Debug output
+    #[cfg(test)]
+    println!("Extracted references: {:#?}", references);
+    
+    Ok(references)
+}
+
+/// Find the start position of the nth list in an ATerm string
+fn find_nth_list_start(s: &str, n: usize) -> Option<usize> {
+    let mut count = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    
+    for (i, c) in s.char_indices() {
+        if in_string {
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+        } else {
+            if c == '"' {
+                in_string = true;
+            } else if c == '[' {
+                count += 1;
+                if count == n {
+                    return Some(i);
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+/// Find the matching closing bracket for the opening bracket at the given position
+fn find_matching_bracket(s: &str, opening_pos: usize) -> Option<usize> {
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    
+    for (i, c) in s[opening_pos..].char_indices() {
+        if in_string {
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+        } else {
+            if c == '"' {
+                in_string = true;
+            } else if c == '[' {
+                depth += 1;
+            } else if c == ']' {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(opening_pos + i);
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+/// Parse a list of quoted strings
+fn parse_string_list(s: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut current = String::new();
+    let mut in_string = false;
+    let mut escape = false;
+    
+    for c in s.chars() {
+        if in_string {
+            if escape {
+                // Handle escaped characters
+                match c {
+                    'n' => current.push('\n'),
+                    'r' => current.push('\r'),
+                    't' => current.push('\t'),
+                    _ => current.push(c),
+                }
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_string = false;
+                // We've completed a string, add it to the result
+                result.push(current.clone());
+                current.clear();
+            } else {
+                current.push(c);
+            }
+        } else if c == '"' {
+            in_string = true;
+        }
+    }
+    
+    result
+}
+
+/// Extract a store path from a substring, if present
+fn extract_store_path(s: &str) -> Option<&str> {
+    // Find a store path pattern in the string
+    let store_path_start = s.find("/nix/store/")?;
+    
+    // Extract everything from the start of the store path to the next quote or comma
+    let mut end = s.len();
+    for (i, c) in s[store_path_start..].char_indices() {
+        if c == '"' || c == ',' || c == ')' {
+            end = store_path_start + i;
+            break;
+        }
+    }
+    
+    Some(&s[store_path_start..end])
+}
+
+/// Error type for derivation ATerm parsing issues
+#[derive(Debug, thiserror::Error)]
+pub enum ATermParsingError {
+    #[error("Invalid derivation ATerm format: {0}")]
+    InvalidFormat(String),
+}
+
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Derivation {
     #[serde(rename = "args")]
