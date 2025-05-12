@@ -1,6 +1,7 @@
 pub(crate) mod wire;
 
 mod copy;
+pub mod hash;
 pub mod listing;
 pub mod reader;
 pub mod writer;

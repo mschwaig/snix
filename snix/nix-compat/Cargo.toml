@@ -34,6 +34,7 @@ sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 bytes = { workspace = true, optional = true }
+count-write = { workspace = true }
 tokio = { workspace = true, features = [
     "io-util",
     "macros",

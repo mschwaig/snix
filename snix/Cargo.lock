@@ -2593,6 +2593,7 @@ dependencies = [
  "bitflags 2.6.0",
  "bstr",
  "bytes",
+ "count-write",
  "criterion",
  "data-encoding",
  "ed25519",
