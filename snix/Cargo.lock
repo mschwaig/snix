@@ -2140,6 +2140,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "laut-compat"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "nix-compat",
+ "snix-castore",
+ "snix-store",
+ "thiserror 2.0.9",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
