@@ -1,6 +1,6 @@
 use clap::{Parser, ValueEnum};
 use std::path::Path;
-use laut_compat::nar::{calculate_nar_hash, format_nar_hash, calculate_castore_hash};
+use laut_compat::content_hash::{calculate_nar_hash, format_nar_hash, calculate_castore_hash};
 
 #[derive(Debug, Clone, ValueEnum)]
 enum HashType {
