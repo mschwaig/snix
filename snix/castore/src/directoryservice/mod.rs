@@ -8,7 +8,7 @@ mod combinators;
 mod directory_graph;
 mod from_addr;
 mod grpc;
-mod memory;
+pub mod memory;
 mod object_store;
 mod order_validator;
 mod redb;

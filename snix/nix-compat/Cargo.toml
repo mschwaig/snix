@@ -5,13 +5,15 @@ edition = "2021"
 
 [features]
 # async NAR writer. Also needs the `wire` feature.
-async = ["tokio"]
+async = ["tokio-optional"]
 # code emitting low-level packets used in the daemon protocol.
-wire = ["tokio", "pin-project-lite", "bytes"]
+wire = ["tokio-optional", "pin-project-lite", "bytes"]
 flakeref = ["url"]
 # nix-daemon protocol handling
-daemon = ["tokio", "nix-compat-derive", "futures"]
+daemon = ["tokio-optional", "nix-compat-derive", "futures-optional"]
 test = []
+tokio-optional = []
+futures-optional = []
 
 # Enable all features by default.
 default = ["async", "daemon", "wire", "nix-compat-derive"]
@@ -23,7 +25,7 @@ data-encoding.workspace = true
 ed25519.workspace = true
 ed25519-dalek.workspace = true
 enum-primitive-derive.workspace = true
-futures = { workspace = true, optional = true }
+futures = { workspace = true }
 glob.workspace = true
 mimalloc.workspace = true
 nom.workspace = true
@@ -33,15 +35,19 @@ serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+blake3.workspace = true
 bytes = { workspace = true, optional = true }
+clap = { workspace = true, features = ["derive", "env"] }
 count-write = { workspace = true }
 tokio = { workspace = true, features = [
     "io-util",
     "macros",
     "sync",
-], optional = true }
+    "rt",
+], optional = false }
 pin-project-lite = { workspace = true, optional = true }
 num_enum = "0.7.3"
+snix-castore = { path = "../castore" }
 url = { workspace = true, optional = true }
 
 [dependencies.nix-compat-derive]

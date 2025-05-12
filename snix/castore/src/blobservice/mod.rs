@@ -11,7 +11,7 @@ mod chunked_reader;
 mod combinator;
 mod from_addr;
 mod grpc;
-mod memory;
+pub mod memory;
 mod object_store;
 
 #[cfg(test)]

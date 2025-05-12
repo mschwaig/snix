@@ -2591,8 +2591,10 @@ name = "nix-compat"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.6.0",
+ "blake3",
  "bstr",
  "bytes",
+ "clap",
  "count-write",
  "criterion",
  "data-encoding",
@@ -2616,6 +2618,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "smol_str",
+ "snix-castore",
  "thiserror 2.0.9",
  "tokio",
  "tokio-test",
