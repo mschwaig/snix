@@ -136,6 +136,6 @@ fn calculate_castore_hash(path: &Path) -> Result<String, std::io::Error> {
         Ok::<B3Digest, std::io::Error>(digest)
     })?;
     
-    // Convert the B3Digest to a hex string
-    Ok(result.to_hex())
+    // Convert the B3Digest to its string representation (blake3-BASE64)
+    Ok(result.to_string())
 }

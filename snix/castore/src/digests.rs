@@ -113,18 +113,6 @@ impl std::fmt::Debug for B3Digest {
     }
 }
 
-impl B3Digest {
-    /// Returns the digest as a hexadecimal string
-    pub fn to_hex(&self) -> String {
-        use std::fmt::Write;
-        let mut s = String::with_capacity(Self::LENGTH * 2);
-        for byte in self.0 {
-            write!(s, "{:02x}", byte).expect("Writing to string shouldn't fail");
-        }
-        s
-    }
-}
-
 impl FromStr for B3Digest {
     type Err = Error;
 
