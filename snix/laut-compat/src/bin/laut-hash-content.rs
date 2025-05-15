@@ -51,14 +51,11 @@ fn main() {
         },
         OutputType::Castore => {
             match create_castore_entry(path) {
-                Ok(entry) => {
-                    let entry_bytes = prost::Message::encode_to_vec(&entry);
+                Ok(encoded) => {
                     if args.quiet {
-                        let encoded = data_encoding::BASE64URL_NOPAD.encode(&entry_bytes);
                         println!("{}", encoded);
                     } else {
-                        println!("CA store entry: {:?}", entry);
-                        println!("Entry size: {} bytes", entry_bytes.len());
+                        println!("CA store entry (encoded): {}", encoded);
                     }
                 },
                 Err(err) => {

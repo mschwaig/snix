@@ -65,7 +65,7 @@ fn create_hash_runtime() -> Result<tokio::runtime::Runtime, HashError> {
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use laut_compat::nar::{calculate_nar_hash, format_nar_hash};
+/// use laut_compat::content_hash::{calculate_nar_hash, format_nar_hash};
 /// use nix_compat::nixhash::HashAlgo;
 ///
 /// let path = Path::new("/nix/store/9bwryidal9q3g91cjm6xschfn4ikd82q-hello-2.12.1");
@@ -102,11 +102,11 @@ pub fn calculate_nar_hash(
     }
 }
 
-/// Create a content-addressed store entry for a path
+/// Create a content-addressed store entry for a path and encode it to a BASE64URL_NOPAD string
 ///
-/// This uses the actual Snix CA store logic to compute a castore Entry for a path.
+/// This uses the actual Snix CA store logic to compute a castore Entry for a path,
+/// encodes it to bytes, and then applies BASE64URL_NOPAD encoding to create a string.
 /// The entry will have an empty name and will contain the node from the path.
-/// This is useful for wrapping nodes in the protobuf Entry format for interchange.
 ///
 /// # Arguments
 ///
@@ -114,15 +114,21 @@ pub fn calculate_nar_hash(
 ///
 /// # Returns
 ///
-/// * On success, returns a nix.castore.v1.Entry with empty name
+/// * On success, returns a BASE64URL_NOPAD encoded string of the entry
 /// * On failure, returns a `HashError`
-pub fn create_castore_entry(path: &Path) -> Result<snix_castore::proto::Entry, HashError> {
+pub fn create_castore_entry(path: &Path) -> Result<String, HashError> {
     // Run the calculation in a runtime
     with_hash_runtime(path, |_, _directory_service, root_node| async move {
         // Create an Entry with an empty name
         let entry = snix_castore::proto::Entry::from_name_and_node("".into(), root_node);
 
-        Ok::<snix_castore::proto::Entry, HashError>(entry)
+        // Encode the entry to bytes
+        let entry_bytes = prost::Message::encode_to_vec(&entry);
+
+        // Encode to BASE64URL_NOPAD
+        let encoded = data_encoding::BASE64URL_NOPAD.encode(&entry_bytes);
+
+        Ok::<String, HashError>(encoded)
     })
 }
 
@@ -201,7 +207,7 @@ where
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use laut_compat::nar::{calculate_nar_hash, format_nar_hash};
+/// use laut_compat::content_hash::{calculate_nar_hash, format_nar_hash};
 ///
 /// let path = Path::new("/nix/store/9bwryidal9q3g91cjm6xschfn4ikd82q-hello-2.12.1");
 /// let (hash, _) = calculate_nar_hash(path, None).unwrap();
@@ -264,12 +270,29 @@ mod tests {
 
             // Calculate both NAR hash and castore entry to verify they run without error
             let (nar_hash, nar_size) = calculate_nar_hash(&path, None).unwrap();
-            let castore_entry = create_castore_entry(&path).unwrap();
+            let encoded_entry = create_castore_entry(&path).unwrap();
 
             // Just print the results for debugging
             println!("File: {:?}", path);
             println!("  NAR hash: {} (size: {})", format_nar_hash(&nar_hash), nar_size);
-            println!("  castore entry: {:?}", castore_entry);
+            println!("  Encoded castore entry: {}", encoded_entry);
+
+            // Verify that the encoded entry is a valid BASE64URL_NOPAD string
+            assert!(
+                !encoded_entry.contains('+'),
+                "Encoded entry should not contain '+' character"
+            );
+            assert!(
+                !encoded_entry.contains('/'),
+                "Encoded entry should not contain '/' character"
+            );
+            assert!(
+                !encoded_entry.contains('='),
+                "Encoded entry should not contain padding '=' character"
+            );
+
+            // Basic validation - all encoded entries should be non-empty
+            assert!(!encoded_entry.is_empty(), "Encoded entry should not be empty");
         }
     }
 }
