@@ -2144,8 +2144,11 @@ name = "laut-compat"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "clap",
+ "data-encoding",
  "nix-compat",
+ "prost",
  "snix-castore",
  "snix-store",
  "thiserror 2.0.9",

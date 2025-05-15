@@ -1,5 +1,5 @@
-//! This module provides functions to calculate NAR hashes and CA store
-//! hashes for store paths.
+//! This module provides functions to calculate
+//! NAR hashes and castore entries for store paths.
 
 use std::io;
 use std::path::Path;
@@ -22,7 +22,7 @@ async fn prepare_for_hashing(path: &Path) -> Result<(MemoryBlobService, MemoryDi
     // Create memory services that don't persist anything
     let blob_service = MemoryBlobService::default();
     let directory_service = MemoryDirectoryService::default();
-    
+
     // Ingest the path into the memory services
     let root_node = ingest_path::<_, _, _, &[u8]>(
         blob_service.clone(),
@@ -34,7 +34,7 @@ async fn prepare_for_hashing(path: &Path) -> Result<(MemoryBlobService, MemoryDi
     .map_err(|e| HashError::IoError(
         std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
     ))?;
-    
+
     Ok((blob_service, directory_service, root_node))
 }
 
@@ -78,7 +78,7 @@ pub fn calculate_nar_hash(
     algo: Option<HashAlgo>,
 ) -> Result<(NixHash, u64), HashError> {
     use snix_store::nar::{SimpleRenderer, NarCalculationService};
-    
+
     let algo = algo.unwrap_or(HashAlgo::Sha256);
     match algo {
         HashAlgo::Sha256 => {
@@ -86,14 +86,14 @@ pub fn calculate_nar_hash(
             with_hash_runtime(path, |blob_service, directory_service, root_node| async move {
                 // Create a SimpleRenderer to calculate the NAR hash
                 let renderer = SimpleRenderer::new(blob_service, directory_service);
-                
+
                 // Calculate the NAR hash
                 let (size, hash) = renderer.calculate_nar(&root_node)
                     .await
                     .map_err(|e| HashError::IoError(
                         std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
                     ))?;
-                
+
                 Ok::<(NixHash, u64), HashError>((NixHash::Sha256(hash), size))
             })
         }
@@ -102,23 +102,33 @@ pub fn calculate_nar_hash(
     }
 }
 
-/// Calculate the content-addressed store hash of a path
-/// 
-/// This uses the actual Snix CA store logic to compute the hash of a path.
-/// For directories, it returns the directory digest directly.
-/// For other node types, it creates a single-entry directory with the node
-/// and returns the digest of that directory.
+/// Create a content-addressed store entry for a path
+///
+/// This uses the actual Snix CA store logic to compute a castore Entry for a path.
+/// The entry will have an empty name and will contain the node from the path.
+/// This is useful for wrapping nodes in the protobuf Entry format for interchange.
 ///
 /// # Arguments
 ///
-/// * `path` - The path to hash
+/// * `path` - The path to create an entry for
 ///
 /// # Returns
 ///
-/// * On success, returns the CA store hash as a string (blake3 hash)
+/// * On success, returns a nix.castore.v1.Entry with empty name
 /// * On failure, returns a `HashError`
-pub fn calculate_castore_hash(path: &Path) -> Result<String, HashError> {
-    
+pub fn create_castore_entry(path: &Path) -> Result<snix_castore::proto::Entry, HashError> {
+    // Run the calculation in a runtime
+    with_hash_runtime(path, |_, _directory_service, root_node| async move {
+        // Create an Entry with an empty name
+        let entry = snix_castore::proto::Entry::from_name_and_node("".into(), root_node);
+
+        Ok::<snix_castore::proto::Entry, HashError>(entry)
+    })
+}
+
+// Private helper function to calculate castore hash if needed internally
+fn calculate_castore_hash(path: &Path) -> Result<String, HashError> {
+
     // Run the calculation in a runtime
     with_hash_runtime(path, |_, _directory_service, root_node| async move {
         // For directories, we get the digest directly
@@ -134,25 +144,25 @@ pub fn calculate_castore_hash(path: &Path) -> Result<String, HashError> {
                     )))?
                     .to_string_lossy()
                     .into_owned();
-                
+
                 // Add the node to the directory
                 dir.add(snix_castore::PathComponent::try_from(name.as_str())
                     .map_err(|e| HashError::IoError(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
                         format!("Invalid path component: {}", e)
-                    )))?, 
+                    )))?,
                     root_node.clone()
                 )
                 .map_err(|e| HashError::IoError(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     format!("Error adding node to directory: {}", e)
                 )))?;
-                
+
                 // Get the digest of the directory
                 dir.digest()
             }
         };
-        
+
         // Return the string representation directly
         Ok::<String, HashError>(digest.to_string())
     })
@@ -166,12 +176,12 @@ where
 {
     // Create a runtime
     let runtime = create_hash_runtime()?;
-    
+
     // Run the computation
     runtime.block_on(async {
         // Prepare inputs
         let (blob_service, directory_service, root_node) = prepare_for_hashing(path).await?;
-        
+
         // Run the provided function
         f(blob_service, directory_service, root_node).await
     })
@@ -236,7 +246,7 @@ mod tests {
 
         assert_eq!(formatted, expected, "NAR hash doesn't match expected value");
     }
-    
+
     #[test]
     fn test_with_test_files() {
         // Get paths to test files
@@ -244,22 +254,22 @@ mod tests {
         let empty_path = testdata_dir.join("empty");
         let full_path = testdata_dir.join("full");
         let dir_path = testdata_dir.join("dir");
-        
-        // Test both hash calculations on all test paths
+
+        // Test hash calculations on all test paths
         for path in [empty_path, full_path, dir_path] {
             if !path.exists() {
                 eprintln!("Skipping missing test file: {:?}", path);
                 continue;
             }
-            
-            // Calculate both hash types to verify they run without error
+
+            // Calculate both NAR hash and castore entry to verify they run without error
             let (nar_hash, nar_size) = calculate_nar_hash(&path, None).unwrap();
-            let castore_hash = calculate_castore_hash(&path).unwrap();
-            
+            let castore_entry = create_castore_entry(&path).unwrap();
+
             // Just print the results for debugging
             println!("File: {:?}", path);
             println!("  NAR hash: {} (size: {})", format_nar_hash(&nar_hash), nar_size);
-            println!("  CA hash: {}", castore_hash);
+            println!("  castore entry: {:?}", castore_entry);
         }
     }
 }
