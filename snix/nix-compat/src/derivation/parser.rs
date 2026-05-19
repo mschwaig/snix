@@ -57,6 +57,24 @@ pub(crate) fn parse(i: &[u8]) -> Result<Derivation, Error<&[u8]>> {
     }
 }
 
+/// Like [`parse`], but skips the trailing call to [`Derivation::validate`].
+///
+/// Use this when reasoning about partially-resolved or otherwise non-canonical
+/// derivations whose structural invariants haven't been re-established yet.
+/// The bytes still need to be syntactically valid ATerm; only the higher-level
+/// validation (output naming, fixed-output rules, non-empty platform/builder, ...)
+/// is skipped.
+pub(crate) fn parse_unchecked(i: &[u8]) -> Result<Derivation, Error<&[u8]>> {
+    match all_consuming(parse_derivation).parse(i) {
+        Ok((rest, derivation)) => {
+            debug_assert!(rest.is_empty());
+            Ok(derivation)
+        }
+        Err(nom::Err::Incomplete(_)) => Err(Error::Incomplete),
+        Err(nom::Err::Error(e) | nom::Err::Failure(e)) => Err(e.into()),
+    }
+}
+
 /// This parses a derivation in streaming fashion.
 /// If the parse is successful, it returns the leftover bytes which were not used for the parsing.
 /// If the parse is unsuccessful, either it returns incomplete or an error with the input as

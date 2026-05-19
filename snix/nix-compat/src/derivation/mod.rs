@@ -340,6 +340,19 @@ impl Derivation {
         parser::parse(b)
     }
 
+    /// Parse a Derivation in ATerm serialization *without* invoking
+    /// [`Derivation::validate`].
+    ///
+    /// This is intended for callers that operate on partially-resolved or
+    /// otherwise non-canonical derivations (e.g. computing the resolved-input
+    /// hash of an unresolved derivation by editing the parsed struct and
+    /// re-serializing). The bytes still need to be syntactically valid ATerm.
+    pub fn from_aterm_bytes_unchecked(
+        b: &[u8],
+    ) -> Result<Derivation, parser::Error<&[u8]>> {
+        parser::parse_unchecked(b)
+    }
+
     /// Returns the drv path of a [Derivation] struct.
     ///
     /// The drv path is calculated by invoking [build_text_path], using
