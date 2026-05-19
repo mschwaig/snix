@@ -125,6 +125,7 @@ mod test {
             Output {
                 path: None,
                 ca_hash: Some(CAHash::Text([0; 32])), // This is disallowed
+                ca_floating: None,
             },
         );
 

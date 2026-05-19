@@ -339,6 +339,7 @@ fn output_path_construction() {
                 )
                 .unwrap(),
             )),
+            ca_floating: None,
         },
     );
 
@@ -399,6 +400,7 @@ fn output_path_construction() {
         Output {
             path: None, // will be calculated
             ca_hash: None,
+            ca_floating: None,
         },
     );
 

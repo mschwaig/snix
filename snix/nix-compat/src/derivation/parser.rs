@@ -131,23 +131,34 @@ fn parse_output(i: &[u8]) -> NomResult<&[u8], (String, Output)> {
                     .map_err(into_nomerror)
             },
             |(output_name, output_path, algo_and_mode, encoded_digest)| {
-                // convert these 4 fields into an [Output].
-                let ca_hash_res = {
+                use crate::derivation::output::CAFloatingAlgo;
+                use crate::nixhash::HashAlgo;
+
+                // Three legitimate shapes for (algo_and_mode, encoded_digest):
+                //   ("",  "")    no CA info at all (input-addressed output)
+                //   (a,   "")    floating CA output: algo declared, no digest yet
+                //   (a,   d)     fixed CA output: full hash
+                let resolved: Result<(Option<CAHash>, Option<CAFloatingAlgo>), nixhash::Error> = {
                     if algo_and_mode.is_empty() && encoded_digest.is_empty() {
-                        None
+                        Ok((None, None))
+                    } else if encoded_digest.is_empty() {
+                        let (recursive, algo_str) = match algo_and_mode.strip_prefix("r:") {
+                            Some(a) => (true, a),
+                            None => (false, algo_and_mode.as_str()),
+                        };
+                        HashAlgo::try_from(algo_str)
+                            .map(|algo| (None, Some(CAFloatingAlgo { algo, recursive })))
                     } else {
                         match data_encoding::HEXLOWER.decode(&encoded_digest) {
-                            Ok(digest) => {
-                                Some(from_algo_and_mode_and_digest(&algo_and_mode, digest))
-                            }
-                            Err(e) => Some(Err(nixhash::Error::InvalidBase64Encoding(e))),
+                            Ok(digest) => from_algo_and_mode_and_digest(&algo_and_mode, digest)
+                                .map(|ca| (Some(ca), None)),
+                            Err(e) => Err(nixhash::Error::InvalidBase64Encoding(e)),
                         }
                     }
-                }
-                .transpose();
+                };
 
-                match ca_hash_res {
-                    Ok(hash_with_mode) => Ok((
+                match resolved {
+                    Ok((ca_hash, ca_floating)) => Ok((
                         output_name,
                         Output {
                             // TODO: Check if allowing empty paths here actually makes sense
@@ -157,7 +168,8 @@ fn parse_output(i: &[u8]) -> NomResult<&[u8], (String, Output)> {
                             } else {
                                 Some(string_to_store_path(i, &output_path)?)
                             },
-                            ca_hash: hash_with_mode,
+                            ca_hash,
+                            ca_floating,
                         },
                     )),
                     Err(e) => Err(nom::Err::Failure(NomError {
@@ -424,6 +436,7 @@ mod tests {
                         .unwrap(),
                 ),
                 ca_hash: None,
+                ca_floating: None,
             },
         );
         b.insert(
@@ -436,6 +449,7 @@ mod tests {
                     .unwrap(),
                 ),
                 ca_hash: None,
+                ca_floating: None,
             },
         );
         b
@@ -616,7 +630,8 @@ mod tests {
         ("out".to_string(), Output {
             path: Some(
                 StorePathRef::from_absolute_path("/nix/store/5vyvcwah9l9kf07d52rcgdk70g2f4y13-foo".as_bytes()).unwrap().to_owned()),
-            ca_hash: None
+            ca_hash: None,
+            ca_floating: None,
         })
     )]
     #[case::fod(
@@ -627,6 +642,29 @@ mod tests {
                 "/nix/store/4q0pg5zpfmznxscq3avycvf9xdvx50n3-bar".as_bytes()).unwrap().to_owned()),
             ca_hash: Some(from_algo_and_mode_and_digest("r:sha256",
                    data_encoding::HEXLOWER.decode(b"08813cbee9903c62be4c5027726a418a300da4500b2d369d3af9286f4815ceba").unwrap()            ).unwrap()),
+            ca_floating: None,
+        })
+     )]
+    #[case::ca_floating_recursive(
+        br#"("out","","r:sha256","")"#,
+        ("out".to_string(), Output {
+            path: None,
+            ca_hash: None,
+            ca_floating: Some(crate::derivation::output::CAFloatingAlgo {
+                algo: crate::nixhash::HashAlgo::Sha256,
+                recursive: true,
+            }),
+        })
+     )]
+    #[case::ca_floating_flat(
+        br#"("out","","sha256","")"#,
+        ("out".to_string(), Output {
+            path: None,
+            ca_hash: None,
+            ca_floating: Some(crate::derivation::output::CAFloatingAlgo {
+                algo: crate::nixhash::HashAlgo::Sha256,
+                recursive: false,
+            }),
         })
      )]
     fn parse_output(#[case] input: &[u8], #[case] expected: (String, Output)) {

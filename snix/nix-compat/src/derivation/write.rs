@@ -120,12 +120,23 @@ pub(crate) fn write_outputs(
         let path_str = output.path_str();
         let mut elements: Vec<&str> = vec![output_name, &path_str];
 
-        let (mode_and_algo, digest) = match &output.ca_hash {
-            Some(ca_hash) => (
+        let (mode_and_algo, digest) = match (&output.ca_hash, &output.ca_floating) {
+            (Some(ca_hash), None) => (
                 format!("{}{}", ca_kind_prefix(ca_hash), ca_hash.hash().algo()),
                 data_encoding::HEXLOWER.encode(ca_hash.hash().digest_as_bytes()),
             ),
-            None => ("".to_string(), "".to_string()),
+            (None, Some(floating)) => (
+                format!(
+                    "{}{}",
+                    if floating.recursive { "r:" } else { "" },
+                    floating.algo
+                ),
+                String::new(),
+            ),
+            (None, None) => (String::new(), String::new()),
+            (Some(_), Some(_)) => unreachable!(
+                "Output invariant: ca_hash and ca_floating are mutually exclusive"
+            ),
         };
 
         elements.push(&mode_and_algo);

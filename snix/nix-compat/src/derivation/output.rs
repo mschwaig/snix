@@ -1,9 +1,23 @@
-use crate::nixhash::CAHash;
+use crate::nixhash::{CAHash, HashAlgo};
 use crate::{derivation::OutputError, store_path::StorePath};
 use serde::de::Unexpected;
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use std::borrow::Cow;
+
+/// Declared hash mode and algorithm for a content-addressed derivation output
+/// whose actual digest isn't known yet (it's produced by the build).
+///
+/// In the ATerm representation this is the case where an output is written as
+/// `("out","","r:sha256","")` — empty path and empty digest, but with the
+/// algo/mode declared. The fully-fixed-output case is represented by
+/// [`CAHash`] instead.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub struct CAFloatingAlgo {
+    pub algo: HashAlgo,
+    /// `true` for `r:` / NAR mode, `false` for flat-file mode.
+    pub recursive: bool,
+}
 
 /// References the derivation output.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -12,7 +26,13 @@ pub struct Output {
     pub path: Option<StorePath<String>>,
 
     #[serde(flatten)]
-    pub ca_hash: Option<CAHash>, // we can only represent a subset here.
+    pub ca_hash: Option<CAHash>,
+
+    /// Declared hash mode/algorithm for floating content-addressed outputs
+    /// (CA derivation outputs whose digest isn't known yet). Mutually
+    /// exclusive with [`Output::ca_hash`].
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ca_floating: Option<CAFloatingAlgo>,
 }
 
 impl<'de> Deserialize<'de> for Output {
@@ -37,6 +57,7 @@ impl<'de> Deserialize<'de> for Output {
         Ok(Self {
             path: Some(path),
             ca_hash: CAHash::from_map::<D>(&fields)?,
+            ca_floating: None,
         })
     }
 }
@@ -64,7 +85,8 @@ impl Output {
             }
         }
 
-        if validate_output_paths && self.path.is_none() {
+        // Floating-CA outputs legitimately have no path until the build pins one.
+        if validate_output_paths && self.path.is_none() && self.ca_floating.is_none() {
             return Err(OutputError::MissingOutputPath);
         }
         Ok(())
