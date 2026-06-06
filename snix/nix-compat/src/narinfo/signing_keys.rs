@@ -31,6 +31,13 @@ where
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    /// Borrow the inner signing key so callers can use it as an
+    /// `ed25519::signature::Signer` for arbitrary messages (e.g. JWS
+    /// signing in laut).
+    pub fn signing_key(&self) -> &S {
+        &self.signing_key
+    }
 }
 
 /// Parses a SigningKey / VerifyingKey from a byte slice in the format that Nix uses.
