@@ -343,23 +343,52 @@ pub fn rewrite_to_ca_pass1(
     })
 }
 
+/// Output of [`rewrite_to_ca_pass2`]: the BASE64URL_NOPAD castore Entry and
+/// the SHA256 NAR hash of the rewritten content, plus its size in bytes.
+///
+/// The NAR hash is computed over the bytes that would be written to disk for
+/// the "as if this output were content-addressed" form (self-ref already
+/// substituted to the synthetic CA hash, deps' refs substituted to their
+/// synthetic CA hashes). No HashModuloSink masking — that's pass 1's job to
+/// derive the CA store-path hash itself; here we want the hash of the real
+/// bytes a downstream consumer would see.
+pub struct Pass2Result {
+    pub castore_entry_base64: String,
+    pub nar_hash: NixHash,
+    pub nar_size: u64,
+}
+
 /// Pass 2 of the IA→CA recursion: ingest `path` with rewrites covering both
 /// runtime deps and the output's self-reference (IA-hash → synthetic-CA-hash),
-/// then return the BASE64URL_NOPAD-encoded castore [`proto::Entry`] of the
-/// resulting root node.
-///
-/// This is the artifact that gets signed as the per-output content fingerprint
-/// — it captures the "as if this output were content-addressed" form of the
-/// path including the substituted self-reference.
+/// then return:
+/// - the BASE64URL_NOPAD-encoded castore [`proto::Entry`] of the resulting root
+///   node (signed as the per-output content fingerprint), and
+/// - the SHA256 NAR hash + size of the rewritten content (stamped into
+///   `payload.out.nix[name].hash` so the verifier can recompute it
+///   symmetrically — see laut-sign's IA branch).
 pub fn rewrite_to_ca_pass2(
     path: &Path,
     rewrites_including_self: &HashMap<String, String>,
-) -> Result<String, HashError> {
+) -> Result<Pass2Result, HashError> {
     let pattern = rewrite_pattern_from_map(rewrites_including_self, None)?;
-    with_hash_runtime_rewriting(path, pattern, |_, _, root_node| async move {
-        let entry = snix_castore::proto::Entry::from_name_and_node("".into(), root_node);
+    with_hash_runtime_rewriting(path, pattern, |blob_service, directory_service, root_node| async move {
+        let entry = snix_castore::proto::Entry::from_name_and_node("".into(), root_node.clone());
         let entry_bytes = prost::Message::encode_to_vec(&entry);
-        Ok(data_encoding::BASE64URL_NOPAD.encode(&entry_bytes))
+        let castore_entry_base64 = data_encoding::BASE64URL_NOPAD.encode(&entry_bytes);
+
+        // Render the rewritten castore tree to a NAR and SHA256 the bytes.
+        let mut nar_bytes: Vec<u8> = Vec::new();
+        snix_store::nar::write_nar(&mut nar_bytes, &root_node, blob_service, directory_service)
+            .await
+            .map_err(|e| HashError::IoError(io::Error::new(io::ErrorKind::Other, e.to_string())))?;
+        let nar_size = nar_bytes.len() as u64;
+        let nar_hash: [u8; 32] = Sha256::digest(&nar_bytes).into();
+
+        Ok(Pass2Result {
+            castore_entry_base64,
+            nar_hash: NixHash::Sha256(nar_hash),
+            nar_size,
+        })
     })
 }
 
@@ -530,7 +559,7 @@ mod tests {
     }
 
     #[test]
-    fn pass2_returns_base64_castore_entry_and_is_deterministic() {
+    fn pass2_returns_castore_entry_and_nar_hash_deterministically() {
         let contents =
             format!("self /nix/store/{HASH_SELF}-out and dep /nix/store/{HASH_DEP}-dep");
         let dir = write_fake_output(&contents);
@@ -539,14 +568,19 @@ mod tests {
         rewrites.insert(HASH_DEP.to_string(), HASH_CA_DEP.to_string());
         rewrites.insert(HASH_SELF.to_string(), HASH_CA_SELF.to_string());
 
-        let b1 = rewrite_to_ca_pass2(&root_of(&dir), &rewrites).unwrap();
-        let b2 = rewrite_to_ca_pass2(&root_of(&dir), &rewrites).unwrap();
-        assert_eq!(b1, b2);
+        let r1 = rewrite_to_ca_pass2(&root_of(&dir), &rewrites).unwrap();
+        let r2 = rewrite_to_ca_pass2(&root_of(&dir), &rewrites).unwrap();
+        // Determinism: castore entry, NAR hash, and NAR size all round-trip.
+        assert_eq!(r1.castore_entry_base64, r2.castore_entry_base64);
+        assert_eq!(format_nar_hash(&r1.nar_hash), format_nar_hash(&r2.nar_hash));
+        assert_eq!(r1.nar_size, r2.nar_size);
         // BASE64URL_NOPAD: no padding, no '+' or '/'.
-        assert!(!b1.is_empty());
-        assert!(!b1.contains('+'));
-        assert!(!b1.contains('/'));
-        assert!(!b1.contains('='));
+        assert!(!r1.castore_entry_base64.is_empty());
+        assert!(!r1.castore_entry_base64.contains('+'));
+        assert!(!r1.castore_entry_base64.contains('/'));
+        assert!(!r1.castore_entry_base64.contains('='));
+        // NAR size positive (we wrote a non-empty dir).
+        assert!(r1.nar_size > 0);
     }
 
     #[test]
@@ -562,9 +596,13 @@ mod tests {
             "ffffffffffffffffffffffffffffffff".to_string(),
         );
 
-        let ba = rewrite_to_ca_pass2(&root_of(&dir), &rewrites_a).unwrap();
-        let bb = rewrite_to_ca_pass2(&root_of(&dir), &rewrites_b).unwrap();
-        assert_ne!(ba, bb);
+        let ra = rewrite_to_ca_pass2(&root_of(&dir), &rewrites_a).unwrap();
+        let rb = rewrite_to_ca_pass2(&root_of(&dir), &rewrites_b).unwrap();
+        assert_ne!(ra.castore_entry_base64, rb.castore_entry_base64);
+        // Different self-ref replacement bytes ⇒ different NAR content ⇒
+        // different NAR hash. Same size though (length-preserving rewrite).
+        assert_ne!(format_nar_hash(&ra.nar_hash), format_nar_hash(&rb.nar_hash));
+        assert_eq!(ra.nar_size, rb.nar_size);
     }
 
     #[test]
