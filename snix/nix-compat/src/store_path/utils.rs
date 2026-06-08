@@ -73,7 +73,7 @@ where
     I: IntoIterator<Item = S>,
 {
     // self references are only allowed for CAHash::Nar(NixHash::Sha256(_)).
-    if self_reference && matches!(ca_hash, CAHash::Nar(NixHash::Sha256(_))) {
+    if self_reference && !matches!(ca_hash, CAHash::Nar(NixHash::Sha256(_))) {
         return Err(BuildStorePathError::InvalidReference());
     }
 
@@ -309,6 +309,76 @@ mod test {
             outer.to_absolute_path().as_str(),
             "/nix/store/mp57d33657rf34lzvlbpfa1gjfv5gmpg-bar"
         );
+    }
+
+    #[test]
+    fn build_ca_path_self_reference_allowed_for_nar_sha256() {
+        // self_reference is only meaningful for CAHash::Nar(NixHash::Sha256(_)),
+        // which is what `nix store make-content-addressed` produces. The call
+        // should succeed and the self-reference flag should influence the
+        // resulting digest via make_references_string.
+        let nar_modulo_hash = nixbase32::decode(
+            b"1xqkzcb3909fp07qngljr4wcdnrh1gdam1m2n29i6hhrxlmkgkv1",
+        )
+        .expect("nixbase32 should decode")
+        .try_into()
+        .expect("should have right len");
+
+        let with_self_ref: StorePathRef = build_ca_path(
+            "baz",
+            &CAHash::Nar(NixHash::Sha256(nar_modulo_hash)),
+            Vec::<String>::new(),
+            true,
+        )
+        .expect("self_reference should be accepted for Nar(Sha256)");
+
+        let without_self_ref: StorePathRef = build_ca_path(
+            "baz",
+            &CAHash::Nar(NixHash::Sha256(nar_modulo_hash)),
+            Vec::<String>::new(),
+            false,
+        )
+        .expect("path without self_reference should also succeed");
+
+        assert_ne!(
+            with_self_ref.to_absolute_path(),
+            without_self_ref.to_absolute_path(),
+            "self_reference must change the derived path"
+        );
+    }
+
+    #[test]
+    fn build_ca_path_self_reference_rejected_for_other_variants() {
+        // Self-references are only defined for Nar(Sha256). Other CAHash variants
+        // must reject self_reference=true.
+        let sha1 = NixHash::Sha1(hex!("0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33"));
+        assert!(matches!(
+            build_ca_path::<&str, String, _>(
+                "bar",
+                &CAHash::Nar(sha1.clone()),
+                Vec::<&str>::new(),
+                true,
+            ),
+            Err(BuildStorePathError::InvalidReference())
+        ));
+        assert!(matches!(
+            build_ca_path::<&str, String, _>(
+                "bar",
+                &CAHash::Flat(sha1),
+                Vec::<&str>::new(),
+                true,
+            ),
+            Err(BuildStorePathError::InvalidReference())
+        ));
+        assert!(matches!(
+            build_ca_path::<&str, String, _>(
+                "bar",
+                &CAHash::Text([0u8; 32]),
+                Vec::<&str>::new(),
+                true,
+            ),
+            Err(BuildStorePathError::InvalidReference())
+        ));
     }
 
     #[test]
