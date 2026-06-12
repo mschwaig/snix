@@ -1,7 +1,7 @@
 //! This module provides functions to calculate
 //! NAR hashes and castore entries for store paths.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::io;
 use std::path::Path;
 use nix_compat::nixhash::{CAHash, HashAlgo, NixHash};
@@ -12,7 +12,7 @@ use snix_castore::Node;
 use snix_castore::blobservice::memory::MemoryBlobService;
 use snix_castore::directoryservice::memory::MemoryDirectoryService;
 use snix_castore::import::fs::{ingest_path, ingest_path_with_rewrites};
-use snix_castore::refscan::{RewriteEntry, RewritePattern, rewrite_in_place};
+use snix_castore::refscan::{ReferenceScanner, RewriteEntry, RewritePattern, rewrite_in_place};
 
 /// Error type for hash calculation
 #[derive(Debug, thiserror::Error)]
@@ -278,6 +278,38 @@ fn validate_hash_str(s: &str) -> Result<(), HashError> {
         )));
     }
     Ok(())
+}
+
+/// Run the snix `ReferenceScanner` over `path`'s blob contents and symlink
+/// targets, looking for any of `candidates` (each a 32-char nixbase32
+/// store-path hash). Returns the subset of `candidates` that were actually
+/// observed in the content.
+///
+/// Used by the laut IA walker as a defense-in-depth equality check against
+/// Nix's stored runtime references (`nix-store -q --references`): the two
+/// sets are expected to agree exactly; any divergence is fatal at the
+/// verifier.
+pub fn scan_for_references(
+    path: &Path,
+    candidates: &BTreeSet<String>,
+) -> Result<BTreeSet<String>, HashError> {
+    for c in candidates {
+        validate_hash_str(c)?;
+    }
+    let candidates_vec: Vec<String> = candidates.iter().cloned().collect();
+    let path_buf = path.to_path_buf();
+    let runtime = create_hash_runtime()?;
+    runtime.block_on(async move {
+        let blob_service = MemoryBlobService::default();
+        let directory_service = MemoryDirectoryService::default();
+        let scanner: ReferenceScanner<String> = ReferenceScanner::new(candidates_vec);
+        ingest_path(blob_service, directory_service, &path_buf, Some(&scanner))
+            .await
+            .map_err(|e| {
+                HashError::IoError(io::Error::new(io::ErrorKind::Other, e.to_string()))
+            })?;
+        Ok::<BTreeSet<String>, HashError>(scanner.finalise())
+    })
 }
 
 /// Pass 1 of the IA→CA recursion: ingest `path` with the supplied
@@ -612,6 +644,36 @@ mod tests {
         deps.insert("too-short".to_string(), HASH_CA_DEP.to_string());
         let err =
             rewrite_to_ca_pass1(&root_of(&dir), "out", &deps, HASH_SELF, &[]).unwrap_err();
+        let HashError::IoError(ioe) = err;
+        assert_eq!(ioe.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn scan_for_references_finds_present_and_skips_absent() {
+        // Content references HASH_DEP but not HASH_SELF.
+        let dir = write_fake_output(&format!("dep here: /nix/store/{HASH_DEP}-name"));
+        let mut candidates = BTreeSet::new();
+        candidates.insert(HASH_DEP.to_string());
+        candidates.insert(HASH_SELF.to_string());
+
+        let found = scan_for_references(&root_of(&dir), &candidates).unwrap();
+        let expected: BTreeSet<String> = [HASH_DEP.to_string()].into_iter().collect();
+        assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn scan_for_references_empty_candidates_returns_empty() {
+        let dir = write_fake_output("anything goes");
+        let found = scan_for_references(&root_of(&dir), &BTreeSet::new()).unwrap();
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn scan_for_references_rejects_wrong_length() {
+        let dir = write_fake_output("nothing");
+        let mut candidates = BTreeSet::new();
+        candidates.insert("too-short".to_string());
+        let err = scan_for_references(&root_of(&dir), &candidates).unwrap_err();
         let HashError::IoError(ioe) = err;
         assert_eq!(ioe.kind(), io::ErrorKind::InvalidInput);
     }
