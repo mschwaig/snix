@@ -20,7 +20,7 @@ mod tests;
 // Public API of the crate.
 pub use crate::nixhash::{CAHash, NixHash};
 pub use errors::{DerivationError, OutputError};
-pub use output::Output;
+pub use output::{CAFloatingAlgo, Output};
 pub use parser::Error as ParserError;
 
 use self::write::AtermWriteable;
