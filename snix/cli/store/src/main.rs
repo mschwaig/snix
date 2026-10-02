@@ -379,7 +379,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         .file_name()
                         .ok_or_else(|| std::io::Error::invalid_data("path has no basename"))?;
 
-                    let name = store_path::validate_name_from_os_str(basename)
+                    let name = store_path::StorePathName::from_os_str(basename)
                         .map_err(|_| std::io::Error::invalid_data("basename invalid"))?
                         .to_owned();
                     Ok::<_, std::io::Error>((p, name))
@@ -432,11 +432,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 &hash,
                                 [],
                                 false,
-                            )
-                            .map_err(|e| {
-                                warn!(err=%e, "unable to build CA path");
-                                std::io::Error::custom(e)
-                            })?;
+                            );
 
                         // Construct and insert PathInfo
                         match path_info_service

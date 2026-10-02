@@ -1,6 +1,6 @@
 use crate::pathinfoservice::PathInfo;
 use nix_compat::nixhash::{CAHash, NixHash, Sha256};
-use nix_compat::store_path::StorePath;
+use nix_compat::store_path::{StorePath, StorePathName};
 use snix_castore::Node;
 use snix_castore::fixtures::{
     DIRECTORY_COMPLICATED, DUMMY_DIGEST, HELLOWORLD_BLOB_CONTENTS, HELLOWORLD_BLOB_DIGEST,
@@ -10,8 +10,12 @@ use std::sync::LazyLock;
 pub const DUMMY_PATH_STR: &str = "00000000000000000000000000000000-dummy";
 pub const DUMMY_PATH_DIGEST: [u8; 20] = [0; 20];
 
-pub static DUMMY_PATH: LazyLock<StorePath> =
-    LazyLock::new(|| StorePath::from_name_and_digest_fixed("dummy", DUMMY_PATH_DIGEST).unwrap());
+pub static DUMMY_PATH: LazyLock<StorePath> = LazyLock::new(|| {
+    StorePath::from_name_and_digest_fixed(
+        StorePathName::from_str("dummy").unwrap(),
+        DUMMY_PATH_DIGEST,
+    )
+});
 
 pub static CASTORE_NODE_SYMLINK: LazyLock<Node> = LazyLock::new(|| Node::Symlink {
     target: "/nix/store/somewhereelse".try_into().unwrap(),

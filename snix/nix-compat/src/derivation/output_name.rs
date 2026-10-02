@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr};
+use std::{borrow::Cow, fmt, str::FromStr};
 
 use smol_str::SmolStr;
 
@@ -34,11 +34,25 @@ impl OutputName {
     pub const fn out() -> Self {
         Self(SmolStr::new_static("out"))
     }
+
+    /// Build the StorePathName, which is either the drv-name suffixed `-{output_name}`,
+    /// except in the `out` case, where it's omitted.
+    pub fn build_store_path_name<'n>(
+        &self,
+        name: &'n store_path::StorePathName,
+    ) -> Result<Cow<'n, store_path::StorePathName>, store_path::ParseStorePathNameError> {
+        if self == &Self::out() {
+            Ok(Cow::Borrowed(name))
+        } else {
+            let s = smol_str::format_smolstr!("{name}-{self}");
+            Ok(Cow::Owned(s.try_into()?))
+        }
+    }
 }
 
 fn validate<S: AsRef<str>>(s: S) -> Result<(), ParseOutputNameError> {
     let name = s.as_ref();
-    store_path::validate_name(name.as_bytes())?;
+    store_path::StorePathName::from_slice(name.as_bytes())?;
 
     // Disallow the reserved 'drv' name, which may appear in store path names,
     // but not in Derivations.

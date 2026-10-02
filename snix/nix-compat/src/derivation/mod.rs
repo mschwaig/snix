@@ -84,7 +84,7 @@
 //! [Derivation Input]: #derivation-input
 //! [Derivation Output]: #derivation-output
 use crate::nixhash::Sha256;
-use crate::store_path::{self, StorePath, StorePathRef};
+use crate::store_path::{self, StorePath, StorePathName, StorePathRef};
 use bstr::BString;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -132,7 +132,7 @@ impl Derivation {
     ///
     /// Use [UnverifiedDerivation::from_aterm_bytes] to parse without verifying this.
     pub fn from_aterm_bytes<'i, L>(
-        name: &str,
+        name: &StorePathName,
         lookup_fn: L,
         b: &'i [u8],
     ) -> Result<Derivation, parser::Error<&'i [u8]>>
@@ -163,9 +163,9 @@ impl Derivation {
     /// Return name of this derivation.
     ///
     /// This is the name of the store path with the suffix `.drv` stripped.
-    pub fn name(&self) -> &str {
+    pub fn name(&self) -> &StorePathName {
         // drv_path MUST end in .drv so this cannot panic
-        self.drv_path.name().strip_suffix(".drv").unwrap()
+        self.drv_path.name().strip_drv_ext().unwrap()
     }
 
     /// Return [`StorePath`] of this derivation.
@@ -235,7 +235,11 @@ impl UnverifiedDerivation {
     ///
     /// [calculated correctly]: Self::recalculate_outputs
     /// [calculates the drvPath]: Self::calculate_derivation_path
-    pub fn verify<L>(self, name: &str, lookup_fn: L) -> Result<Derivation, DerivationError>
+    pub fn verify<L>(
+        self,
+        name: &StorePathName,
+        lookup_fn: L,
+    ) -> Result<Derivation, DerivationError>
     where
         L: HashDerivationModuloLookup,
     {
@@ -290,7 +294,10 @@ impl UnverifiedDerivation {
     ///
     /// [`input_sources`]: UnverifiedDerivation::input_sources
     /// [`input_derivations`]: UnverifiedDerivation::input_derivations
-    pub fn calculate_derivation_path(&self, name: &str) -> Result<StorePath, DerivationError> {
+    pub fn calculate_derivation_path(
+        &self,
+        name: &StorePathName,
+    ) -> Result<StorePath, DerivationError> {
         // collect the list of paths from input_sources AND input_derivations
         // into a sorted list of references.
         let mut references: BTreeSet<StorePathRef> = self
@@ -301,15 +308,16 @@ impl UnverifiedDerivation {
             .collect();
         references.extend(self.builder.input_sources.iter().map(StorePath::as_ref));
 
-        let drv_name = format!("{}.drv", name);
-        store_path::build_text_path(
+        let drv_name = name.build_drv_name().map_err(|err| {
+            DerivationError::InvalidDerivationName(format!("{}.drv", name).into_bytes(), err.into())
+        })?;
+        Ok(store_path::build_text_path(
             // append .drv to the name
             &drv_name,
             self.to_aterm_bytes(),
             references,
         )
-        .map_err(|err| DerivationError::InvalidDerivationName(drv_name.to_string(), err))
-        .map(|sp| sp.to_owned())
+        .to_owned())
     }
 
     /// Returns the FOD digest, if the derivation is fixed-output, or None if
@@ -349,7 +357,11 @@ impl UnverifiedDerivation {
     }
 
     /// Recalculate and return the [`Outputs`] of this `UnverifiedDerivation`.
-    pub fn recalculate_outputs<L>(&self, name: &str, lookup: L) -> Result<Outputs, DerivationError>
+    pub fn recalculate_outputs<L>(
+        &self,
+        name: &StorePathName,
+        lookup: L,
+    ) -> Result<Outputs, DerivationError>
     where
         L: HashDerivationModuloLookup,
     {

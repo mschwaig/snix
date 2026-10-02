@@ -108,7 +108,7 @@ pub(crate) mod derivation_builtins {
 
     use nix_compat::derivation::OutputsBuilder;
     use nix_compat::nixhash::{HashAlgo, NixHash};
-    use nix_compat::store_path::hash_placeholder;
+    use nix_compat::store_path::{StorePathName, hash_placeholder};
     use snix_build_glue::builder;
     use snix_build_glue::fetchurl_derivation::fetchurl_derivation_to_fetch;
     use snix_eval::generators::Gen;
@@ -156,10 +156,14 @@ pub(crate) mod derivation_builtins {
         }
 
         let name = name.to_str().context("determining derivation name")?;
-        if name.is_empty() {
-            return Err(ErrorKind::Abort("derivation has empty name".to_string()));
-        }
-        let name = name.to_str()?;
+        let name = StorePathName::from_slice(&name).map_err(|err| {
+            DerivationError::InvalidDerivation(
+                nix_compat::derivation::DerivationError::InvalidDerivationName(
+                    name.to_vec(),
+                    err.into(),
+                ),
+            )
+        })?;
 
         let mut drv = DerivationBuilder::default();
 

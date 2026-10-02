@@ -1,6 +1,9 @@
 //! Code translating from a `builtin:derivation` [Derivation] to a [Fetch].
 use crate::fetchers::Fetch;
-use nix_compat::derivation::{Derivation, OutputHash, OutputHashMode};
+use nix_compat::{
+    derivation::{Derivation, OutputHash, OutputHashMode},
+    store_path::StorePathName,
+};
 use tracing::instrument;
 
 /// Parses a [Derivation] to a [Fetch] if using the `builtin:fetchurl` command and otherwise valid
@@ -9,7 +12,9 @@ use tracing::instrument;
 /// If it uses `builtin:fetchurl`, but is otherwise invalid, an [Error] is returned.
 /// Otherwise returns the synthesized [Fetch], as well as the name.
 #[instrument]
-pub fn fetchurl_derivation_to_fetch(drv: &Derivation) -> Result<Option<(&str, Fetch)>, Error> {
+pub fn fetchurl_derivation_to_fetch(
+    drv: &Derivation,
+) -> Result<Option<(&StorePathName, Fetch)>, Error> {
     if drv.command() != "builtin:fetchurl" {
         return Ok(None);
     }

@@ -128,8 +128,7 @@ impl NixDaemonIO for SnixDaemon {
                 &cahash.hash(),
                 info.info.references.iter().map(|p| p.as_ref()),
                 false,
-            )
-            .map_err(Error::other)?;
+            );
 
             if actual_path != info.path.as_ref() {
                 return Err(Error::other("path mismatch"));

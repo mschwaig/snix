@@ -12,7 +12,7 @@ use tracing::{Span, info};
 ///
 /// In the success case, the returned boolean describes whether an update was necessary or not.
 #[tracing::instrument(err, skip_all, fields(
-    path_info.name = path_info.store_path.name(),
+    path_info.name = %path_info.store_path.name(),
     path_info.digest = nixbase32::encode(path_info.store_path.digest()),
     directory.digest = tracing::field::Empty,
     directory.size = tracing::field::Empty,

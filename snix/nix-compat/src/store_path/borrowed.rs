@@ -1,19 +1,18 @@
-use smol_str::SmolStr;
 use std::fmt;
 
 use crate::{
     nixbase32,
     store_path::{
         DIGEST_SIZE, ENCODED_DIGEST_SIZE, ParseStorePathError, STORE_DIR_WITH_SLASH, StorePath,
-        validate_name,
+        StorePathName,
     },
 };
 
-/// Like [StorePath], but with a `&str` for the name.
+/// Like [StorePath], but with a `&StorePathName` for the name.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct StorePathRef<'a> {
     digest: [u8; DIGEST_SIZE],
-    name: &'a str,
+    name: &'a StorePathName,
 }
 
 impl<'a> StorePathRef<'a> {
@@ -21,14 +20,14 @@ impl<'a> StorePathRef<'a> {
         &self.digest
     }
 
-    pub fn name(&self) -> &'a str {
+    pub fn name(&self) -> &'a StorePathName {
         self.name
     }
 
     pub fn to_owned(&self) -> StorePath {
         StorePath {
             digest: self.digest,
-            name: SmolStr::new(self.name),
+            name: self.name.to_owned(),
         }
     }
 
@@ -52,27 +51,24 @@ impl<'a> StorePathRef<'a> {
 
         Ok(Self {
             digest,
-            name: validate_name(&s[ENCODED_DIGEST_SIZE + 1..])?,
+            name: StorePathName::from_slice(&s[ENCODED_DIGEST_SIZE + 1..])?,
         })
     }
 
     /// Construct from a name and digest.
     /// The name is validated, and the digest checked for size.
-    pub fn from_name_and_digest(name: &'a str, digest: &[u8]) -> Result<Self, ParseStorePathError> {
+    pub fn from_name_and_digest(
+        name: &'a StorePathName,
+        digest: &[u8],
+    ) -> Result<Self, ParseStorePathError> {
         let digest_fixed = digest.try_into().map_err(|_| ParseStorePathError::Length)?;
-        Self::from_name_and_digest_fixed(name, digest_fixed)
+        Ok(Self::from_name_and_digest_fixed(name, digest_fixed))
     }
 
     /// Construct from a name and digest of correct length.
     /// The name is validated.
-    pub fn from_name_and_digest_fixed(
-        name: &'a str,
-        digest: [u8; DIGEST_SIZE],
-    ) -> Result<Self, ParseStorePathError> {
-        Ok(Self {
-            name: validate_name(name.as_bytes())?,
-            digest,
-        })
+    pub fn from_name_and_digest_fixed(name: &'a StorePathName, digest: [u8; DIGEST_SIZE]) -> Self {
+        Self { name, digest }
     }
 
     /// Construct from an absolute store path string.
@@ -158,7 +154,7 @@ impl<'a> From<StorePathRef<'a>> for StorePath {
     fn from(value: StorePathRef<'a>) -> Self {
         Self {
             digest: value.digest,
-            name: SmolStr::new(value.name),
+            name: value.name.to_owned(),
         }
     }
 }

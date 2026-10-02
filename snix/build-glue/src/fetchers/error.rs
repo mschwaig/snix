@@ -27,7 +27,7 @@ pub enum FetcherError {
     Import(Box<snix_castore::import::IngestionError<import::archive::Error>>),
 
     #[error("Error calculating store path for fetcher output: {0}")]
-    StorePath(#[from] store_path::ParseStorePathError),
+    StorePath(#[from] store_path::ParseStorePathNameError),
 }
 
 impl FetcherError {

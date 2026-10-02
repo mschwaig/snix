@@ -2,7 +2,7 @@ use data_encoding::HEXLOWER;
 use futures::TryStreamExt;
 use nix_compat::{
     nixhash::{CAHash, CAHashMode, HashAlgo, NixHash, NixHashDigester, copy_buf_hashed},
-    store_path::{ParseStorePathError, StorePathRef, build_ca_path},
+    store_path::{StorePathName, StorePathRef, build_ca_path},
 };
 use snix_castore::{Node, blob_engine::BlobEngine, directoryservice::DirectoryService};
 use snix_store::{
@@ -132,10 +132,7 @@ impl Fetch {
     /// If the [Fetch] contains an expected hash upfront, returns the resulting
     /// store path.
     /// This doesn't do any fetching.
-    pub fn store_path<'a>(
-        &self,
-        name: &'a str,
-    ) -> Result<Option<StorePathRef<'a>>, ParseStorePathError> {
+    pub fn store_path<'a>(&self, name: &'a StorePathName) -> Option<StorePathRef<'a>> {
         let ca_hash = match self {
             Fetch::URL {
                 exp_hash: Some(exp_hash),
@@ -158,18 +155,17 @@ impl Fetch {
             | Fetch::Tarball {
                 exp_nar_sha256: None,
                 ..
-            } => return Ok(None),
+            } => return None,
         };
 
         // calculate the store path of this fetch
-        build_ca_path(
+        Some(build_ca_path(
             name,
             ca_hash.mode() == CAHashMode::Nar,
             &ca_hash.hash(),
             [],
             false,
-        )
-        .map(Some)
+        ))
     }
 }
 
@@ -524,7 +520,7 @@ where
     /// lookup to the PathInfoService again.
     pub async fn ingest_and_persist<'a>(
         &self,
-        name: &'a str,
+        name: &'a StorePathName,
         fetch: Fetch,
     ) -> Result<(StorePathRef<'a>, PathInfo), FetcherError> {
         // Fetch file, return the (unnamed) (File)Node of its contents, ca hash and filesize.
@@ -537,7 +533,7 @@ where
             &ca_hash.hash(),
             [],
             false,
-        )?;
+        );
 
         // If the resulting hash is not a CAHash::Nar, we also need to invoke
         // `calculate_nar` to calculate this representation, as it's required in
@@ -580,7 +576,7 @@ mod tests {
     mod fetch {
         use super::super::*;
         use crate::fetchers::Fetch;
-        use nix_compat::{nixbase32, nixhash::NixHash};
+        use nix_compat::{nixbase32, nixhash::NixHash, store_path::StorePathNameBuf};
         use rstest::rstest;
 
         #[rstest]
@@ -635,11 +631,11 @@ mod tests {
         fn fetch_store_path(
             #[case] fetch: Fetch,
             #[case] exp_path: Option<StorePathRef>,
-            #[case] name: &str,
+            #[case] name: StorePathNameBuf,
         ) {
             assert_eq!(
                 exp_path,
-                fetch.store_path(name).expect("invalid name"),
+                fetch.store_path(&name),
                 "unexpected calculated store path"
             );
         }
@@ -657,7 +653,10 @@ mod tests {
 
             assert_eq!(
                 "7adgvk5zdfq4pwrhsm3n9lzypb12gw0g-source",
-                &fetch.store_path("source").unwrap().unwrap().to_string(),
+                &fetch
+                    .store_path(StorePathName::source())
+                    .unwrap()
+                    .to_string(),
             )
         }
     }

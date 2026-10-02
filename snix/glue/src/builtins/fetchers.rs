@@ -3,6 +3,8 @@
 use super::utils::select_string;
 use crate::snix_store_io::SnixStoreIO;
 use nix_compat::nixhash::{HashAlgo, NixHash};
+use nix_compat::store_path::StorePathNameBuf;
+use snix_build_glue::fetchers::FetcherError;
 use snix_eval::builtin_macros::builtins;
 use snix_eval::generators::Gen;
 use snix_eval::generators::GenCo;
@@ -14,7 +16,7 @@ use url::Url;
 // parsing code between the fetchurl and fetchTarball builtins.
 struct NixFetchArgs {
     url: Url,
-    name: Option<String>,
+    name: Option<StorePathNameBuf>,
     sha256: Option<[u8; 32]>,
 }
 
@@ -56,6 +58,10 @@ async fn extract_fetch_args(
     let url_str = try_cek!(select_string(co, &attrs, "url").await?)
         .ok_or_else(|| ErrorKind::AttributeNotFound { name: "url".into() })?;
     let name = try_cek!(select_string(co, &attrs, "name").await?);
+    let name = name
+        .map(|n| n.parse::<StorePathNameBuf>())
+        .transpose()
+        .map_err(|e| ErrorKind::SnixError(Arc::from(FetcherError::StorePath(e))))?;
     let sha256_str = try_cek!(select_string(co, &attrs, "sha256").await?);
 
     Ok(Ok(NixFetchArgs {
@@ -77,7 +83,7 @@ async fn extract_fetch_args(
 #[builtins(state = "Rc<SnixStoreIO>")]
 pub(crate) mod fetcher_builtins {
     use bstr::ByteSlice;
-    use nix_compat::{flakeref, nixhash::NixHash};
+    use nix_compat::{flakeref, nixhash::NixHash, store_path::StorePathNameBuf};
     use snix_build_glue::fetchers::Fetch;
     use snix_eval::{NixContext, NixString, try_cek_to_value};
     use std::collections::BTreeMap;
@@ -101,11 +107,12 @@ pub(crate) mod fetcher_builtins {
     /// return the store path.
     /// Note the builtins.typeof of fetchurl and fetchTarball are *not* "path", but "string",
     /// to stay bug-compatible with Nix.
-    fn fetch_lazy(state: Rc<SnixStoreIO>, name: String, fetch: Fetch) -> Result<Value, ErrorKind> {
-        let store_path = match fetch
-            .store_path(&name)
-            .map_err(|e| ErrorKind::SnixError(Arc::from(e)))?
-        {
+    fn fetch_lazy(
+        state: Rc<SnixStoreIO>,
+        name: StorePathNameBuf,
+        fetch: Fetch,
+    ) -> Result<Value, ErrorKind> {
+        let store_path = match fetch.store_path(&name) {
             Some(store_path) => {
                 // Move the fetch to KnownPaths, so it can be actually fetched later.
                 let sp = state
@@ -156,7 +163,8 @@ pub(crate) mod fetcher_builtins {
         // Derive the name from the URL basename if not set explicitly.
         let name = args
             .name
-            .unwrap_or_else(|| url_basename(&args.url).to_owned());
+            .map_or_else(|| url_basename(&args.url).parse::<StorePathNameBuf>(), Ok)
+            .map_err(|e| ErrorKind::SnixError(Arc::from(FetcherError::StorePath(e))))?;
 
         fetch_lazy(
             state,
@@ -177,10 +185,7 @@ pub(crate) mod fetcher_builtins {
         let args = try_cek_to_value!(extract_fetch_args(&co, args).await?);
 
         // Name defaults to "source" if not set explicitly.
-        const DEFAULT_NAME_FETCH_TARBALL: &str = "source";
-        let name = args
-            .name
-            .unwrap_or_else(|| DEFAULT_NAME_FETCH_TARBALL.to_owned());
+        let name = args.name.unwrap_or_default();
 
         fetch_lazy(
             state,

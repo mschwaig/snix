@@ -308,16 +308,13 @@ impl BuildState {
                         nar_size,
                         nar_sha256,
                         signatures: vec![],
-                        deriver: Some(
-                            StorePath::from_name_and_digest_fixed(
-                                drv_path
-                                    .name()
-                                    .strip_suffix(".drv")
-                                    .expect("missing .drv suffix"),
-                                *drv_path.digest(),
-                            )
-                            .expect("Snix bug: StorePath without .drv suffix must be valid"),
-                        ),
+                        deriver: Some(StorePath::from_name_and_digest_fixed(
+                            drv_path
+                                .name()
+                                .strip_drv_ext()
+                                .expect("missing .drv suffix"),
+                            *drv_path.digest(),
+                        )),
                         // CA derivations only have one output, so this only runs once.
                         ca: ca.take(),
                     };

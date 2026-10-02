@@ -1,6 +1,5 @@
 use crate::nixbase32;
 use data_encoding::DecodeError;
-use smol_str::SmolStr;
 use std::{
     fmt,
     str::{self, FromStr},
@@ -8,9 +7,11 @@ use std::{
 use thiserror;
 
 mod borrowed;
+mod name;
 mod utils;
 
 pub use borrowed::StorePathRef;
+pub use name::*;
 pub use utils::*;
 
 pub const DIGEST_SIZE: usize = 20;
@@ -20,15 +21,6 @@ pub const ENCODED_DIGEST_SIZE: usize = nixbase32::encode_len(DIGEST_SIZE);
 // That's usually where the Nix store is mounted at.
 pub const STORE_DIR: &str = "/nix/store";
 pub const STORE_DIR_WITH_SLASH: &str = "/nix/store/";
-
-/// Error returned by [`validate_name`].
-#[derive(Debug, PartialEq, Eq, Clone, thiserror::Error)]
-pub enum ParseStorePathNameError {
-    #[error("Invalid length")]
-    Length,
-    #[error("Invalid name")]
-    Name,
-}
 
 impl From<ParseStorePathNameError> for ParseStorePathError {
     fn from(value: ParseStorePathNameError) -> Self {
@@ -68,7 +60,7 @@ pub enum ParseStorePathError {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct StorePath {
     digest: [u8; DIGEST_SIZE],
-    name: SmolStr,
+    name: StorePathNameBuf,
 }
 
 impl StorePath {
@@ -76,7 +68,7 @@ impl StorePath {
         &self.digest
     }
 
-    pub fn name(&self) -> &'_ str {
+    pub fn name(&self) -> &'_ StorePathName {
         &self.name
     }
 
@@ -88,17 +80,17 @@ impl StorePath {
 
     /// Construct a [StorePath] from a name and digest.
     /// The name is validated, and the digest checked for size.
-    pub fn from_name_and_digest(name: &str, digest: &[u8]) -> Result<Self, ParseStorePathError> {
+    pub fn from_name_and_digest(
+        name: &StorePathName,
+        digest: &[u8],
+    ) -> Result<Self, ParseStorePathError> {
         Ok(StorePathRef::from_name_and_digest(name, digest)?.to_owned())
     }
 
     /// Construct a [StorePathRef] from a name and digest of correct length.
     /// The name is validated.
-    pub fn from_name_and_digest_fixed(
-        name: &str,
-        digest: [u8; DIGEST_SIZE],
-    ) -> Result<Self, ParseStorePathError> {
-        Ok(StorePathRef::from_name_and_digest_fixed(name, digest)?.to_owned())
+    pub fn from_name_and_digest_fixed(name: &StorePathName, digest: [u8; DIGEST_SIZE]) -> Self {
+        StorePathRef::from_name_and_digest_fixed(name, digest).to_owned()
     }
 
     /// Construct a [StorePathRef] from an absolute store path string.
@@ -182,57 +174,6 @@ impl serde::Serialize for StorePath {
     {
         self.as_ref().serialize(serializer)
     }
-}
-
-/// NAME_CHARS contains `true` for bytes that are valid in store path names.
-static NAME_CHARS: [bool; 256] = {
-    let mut tbl = [false; 256];
-    let mut c = 0;
-
-    loop {
-        tbl[c as usize] = matches!(c, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'+' | b'-' | b'_' | b'?' | b'=' | b'.');
-
-        if c == u8::MAX {
-            break;
-        }
-
-        c += 1;
-    }
-
-    tbl
-};
-
-/// Checks a given &[u8] to match the restrictions for [StorePath::name], and
-/// returns the name as &str if successful.
-pub fn validate_name(s: &[u8]) -> Result<&str, ParseStorePathNameError> {
-    // Empty or excessively long names are not allowed.
-    if s.is_empty() || s.len() > 211 {
-        return Err(ParseStorePathNameError::Length);
-    }
-
-    let mut valid = true;
-    for &c in s {
-        valid = valid && NAME_CHARS[c as usize];
-    }
-
-    if !valid {
-        for &c in s.iter() {
-            if !NAME_CHARS[c as usize] {
-                return Err(ParseStorePathNameError::Name);
-            }
-        }
-
-        unreachable!();
-    }
-
-    // SAFETY: We permit a subset of ASCII, which guarantees valid UTF-8.
-    Ok(unsafe { str::from_utf8_unchecked(s) })
-}
-
-/// Checks a given OsStr to match the restrictions for [StorePath::name], and
-/// returns the name as &str if successful.
-pub fn validate_name_from_os_str(s: &std::ffi::OsStr) -> Result<&str, ParseStorePathNameError> {
-    validate_name(s.as_encoded_bytes())
 }
 
 impl fmt::Display for StorePath {

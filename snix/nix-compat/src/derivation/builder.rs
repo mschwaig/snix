@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write;
 
 use bstr::BString;
 use tracing::warn;
@@ -12,7 +11,7 @@ use crate::derivation::{
     outputs::OutputsError,
 };
 use crate::nixhash::{Sha256, Sha256Digester};
-use crate::store_path::{self, StorePath};
+use crate::store_path::{self, StorePath, StorePathName};
 
 /// Builder for [`Derivation`] and [`UnverifiedDerivation`].
 ///
@@ -150,7 +149,11 @@ impl DerivationBuilder {
     /// make the [`StorePath`].
     ///
     /// [hash derivation modulo]: nix_compat::derivation#hash-derivation-modulo
-    pub fn calculate_outputs<L>(&self, name: &str, lookup: L) -> Result<Outputs, DerivationError>
+    pub fn calculate_outputs<L>(
+        &self,
+        name: &StorePathName,
+        lookup: L,
+    ) -> Result<Outputs, DerivationError>
     where
         L: HashDerivationModuloLookup,
     {
@@ -164,8 +167,7 @@ impl DerivationBuilder {
                     &output_hash.hash,
                     [],
                     false,
-                )
-                .map_err(|e| OutputsError::InvalidOutputDerivationPath(name.to_string(), e))?;
+                );
                 Ok(Outputs::fixed_output(
                     output_hash.clone(),
                     store_path.to_owned(),
@@ -180,20 +182,13 @@ impl DerivationBuilder {
                 for output_name in output_names.iter() {
                     // Assemble the name, which is either the drv-name suffixed `-{output_name}`,
                     // except in the `out` case, where it's omitted.
-                    let name = {
-                        let mut name = name.to_string();
-                        if output_name != &OutputName::out() {
-                            write!(name, "-{output_name}").unwrap();
-                        }
-                        name
-                    };
+                    let name = output_name.build_store_path_name(name).map_err(|e| {
+                        OutputsError::InvalidOutputDerivationPath(name.to_string(), e.into())
+                    })?;
 
                     // use [build_output_path] with [hash_derivation_modulo].
                     let store_path =
-                        store_path::build_output_path(&name, &hash_derivation_modulo, output_name)
-                            .map_err(|e| {
-                                OutputsError::InvalidOutputDerivationPath(name.to_string(), e)
-                            })?;
+                        store_path::build_output_path(&name, &hash_derivation_modulo, output_name);
                     if outputs
                         .insert(output_name.clone(), store_path.to_owned())
                         .is_some()
@@ -213,7 +208,7 @@ impl DerivationBuilder {
     /// [`HashDerivationModuloLookup`].
     ///
     /// [validated]: #validation
-    pub fn build<L>(self, name: &str, lookup: L) -> Result<Derivation, DerivationError>
+    pub fn build<L>(self, name: &StorePathName, lookup: L) -> Result<Derivation, DerivationError>
     where
         L: HashDerivationModuloLookup,
     {
@@ -265,7 +260,7 @@ impl DerivationBuilder {
         // Validate all input_derivation paths to end with .drv.
         // The output names are already validated as we're using the OutputName type.
         for input_derivation_path in self.input_derivations.keys() {
-            if !input_derivation_path.name().ends_with(".drv") {
+            if !input_derivation_path.name().is_drv() {
                 return Err(DerivationError::InvalidInputDerivationPrefix(
                     input_derivation_path.to_string(),
                 ));

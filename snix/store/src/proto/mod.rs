@@ -6,7 +6,7 @@ use data_encoding::BASE64;
 use nix_compat::{
     narinfo::{Signature, SignatureError},
     nixhash::{CAHash, NixHash},
-    store_path::{self, StorePathRef},
+    store_path::{self, StorePathName, StorePathRef},
 };
 use snix_castore::DirectoryError;
 use thiserror::Error;
@@ -202,7 +202,7 @@ impl From<crate::pathinfoservice::PathInfo> for PathInfo {
                     .collect(),
                 reference_names: value.references.iter().map(|r| r.to_string()).collect(),
                 deriver: value.deriver.as_ref().map(|sp| StorePath {
-                    name: (*sp.name()).to_owned(),
+                    name: sp.name().to_string(),
                     digest: Bytes::copy_from_slice(sp.digest()),
                 }),
                 ca: value.ca.as_ref().map(|ca| ca.into()),
@@ -297,7 +297,9 @@ impl TryFrom<PathInfo> for crate::pathinfoservice::PathInfo {
                 .deriver
                 .map(|deriver| {
                     nix_compat::store_path::StorePath::from_name_and_digest(
-                        &deriver.name,
+                        StorePathName::from_str(&deriver.name).map_err(|err| {
+                            ValidatePathInfoError::InvalidDeriverField(err.into())
+                        })?,
                         &deriver.digest,
                     )
                     .map_err(ValidatePathInfoError::InvalidDeriverField)

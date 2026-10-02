@@ -270,11 +270,12 @@ impl EvalIO for SnixStoreIO {
                 "path without basename encountered",
             )
         })?;
+        let name = nix_compat::store_path::StorePathName::from_os_str(file_name)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         let path_info = self.tokio_handle.block_on({
             snix_store::import::import_path_as_nar_ca(
                 path,
-                nix_compat::store_path::validate_name_from_os_str(file_name)
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+                name,
                 &self.build_state.blob_engine,
                 &self.build_state.directory_service,
                 &self.build_state.path_info_service,

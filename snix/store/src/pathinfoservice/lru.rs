@@ -94,7 +94,7 @@ impl ServiceBuilder for LruPathInfoServiceConfig {
 
 #[cfg(test)]
 mod test {
-    use nix_compat::store_path::StorePath;
+    use nix_compat::store_path::{StorePath, StorePathName};
     use std::{num::NonZeroUsize, sync::LazyLock};
 
     use crate::{
@@ -103,7 +103,10 @@ mod test {
     };
     static PATHINFO_2: LazyLock<PathInfo> = LazyLock::new(|| {
         let mut p = PATH_INFO.clone();
-        p.store_path = StorePath::from_name_and_digest_fixed("dummy", [1; 20]).unwrap();
+        p.store_path = StorePath::from_name_and_digest_fixed(
+            StorePathName::from_str("dummy").unwrap(),
+            [1; 20],
+        );
         p
     });
 

@@ -12,7 +12,7 @@ use hashbrown::HashMap;
 use nix_compat::{
     derivation::{Derivation, DerivationError, HashDerivationModuloLookup, UnverifiedDerivation},
     nixhash::Sha256,
-    store_path::{ParseStorePathError, StorePath, StorePathRef},
+    store_path::{ParseStorePathError, StorePath, StorePathName, StorePathNameBuf, StorePathRef},
 };
 
 use crate::fetchers::Fetch;
@@ -34,7 +34,7 @@ pub struct KnownPaths {
     outputs_to_drvpath: HashMap<StorePath, StorePath>,
 
     /// A map from output path to fetches (and their names).
-    outputs_to_fetches: HashMap<StorePath, (String, Fetch)>,
+    outputs_to_fetches: HashMap<StorePath, (StorePathNameBuf, Fetch)>,
 }
 
 impl KnownPaths {
@@ -64,9 +64,9 @@ impl KnownPaths {
         drv_path: StorePath,
         drv: UnverifiedDerivation,
     ) -> Result<(), DerivationError> {
-        let drv_name = drv_path.name().strip_suffix(".drv").ok_or_else(|| {
+        let drv_name = drv_path.name().strip_drv_ext().ok_or_else(|| {
             DerivationError::InvalidDerivationName(
-                drv_path.name().to_owned(),
+                drv_path.name().as_bytes().to_vec(),
                 ParseStorePathError::Name,
             )
         })?;
@@ -124,10 +124,10 @@ impl KnownPaths {
     pub fn add_fetch<'a>(
         &mut self,
         fetch: Fetch,
-        name: &'a str,
+        name: &'a StorePathName,
     ) -> Result<StorePathRef<'a>, ParseStorePathError> {
         let store_path = fetch
-            .store_path(name)?
+            .store_path(name)
             .expect("Snix bug: fetch must have an expected hash");
         // insert the fetch.
         self.outputs_to_fetches
@@ -141,7 +141,7 @@ impl KnownPaths {
     pub fn get_fetch_for_output_path(
         &self,
         output_path: &StorePathRef<'_>,
-    ) -> Option<(String, Fetch)> {
+    ) -> Option<(StorePathNameBuf, Fetch)> {
         self.outputs_to_fetches
             .get(output_path)
             .map(|(name, fetch)| (name.to_owned(), fetch.to_owned()))
@@ -170,7 +170,7 @@ mod tests {
         derivation::{Derivation, UnverifiedDerivation},
         nixbase32,
         nixhash::{NixHash, Sha256},
-        store_path::StorePath,
+        store_path::{StorePath, StorePathName},
     };
     use url::Url;
 
@@ -239,7 +239,7 @@ mod tests {
         // FOO_DRV depends on BAR_DRV, which wasn't added.
         FOO_DRV
             .clone()
-            .verify("foo", &known_paths)
+            .verify(StorePathName::from_str("foo").unwrap(), &known_paths)
             .expect("could not verify");
     }
 
@@ -327,7 +327,7 @@ mod tests {
         assert_eq!(
             *FETCH_TARBALL_OUT_PATH,
             known_paths
-                .add_fetch(FETCH_TARBALL.clone(), "source")
+                .add_fetch(FETCH_TARBALL.clone(), StorePathName::source())
                 .unwrap()
                 .to_owned()
         );
@@ -335,7 +335,10 @@ mod tests {
         assert_eq!(
             *FETCH_URL_OUT_PATH,
             known_paths
-                .add_fetch(FETCH_URL.clone(), "notmuch-extract-patch")
+                .add_fetch(
+                    FETCH_URL.clone(),
+                    StorePathName::from_str("notmuch-extract-patch").unwrap()
+                )
                 .unwrap()
                 .to_owned()
         );

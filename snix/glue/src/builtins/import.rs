@@ -113,7 +113,8 @@ mod import_builtins {
     use bstr::ByteSlice;
     use nix_compat::nixhash::{CAHash, HashAlgo, NixHash};
     use nix_compat::store_path::{
-        StorePath, StorePathRef, build_ca_path, build_text_path_from_content_digest,
+        StorePath, StorePathName, StorePathNameBuf, StorePathRef, build_ca_path,
+        build_text_path_from_content_digest,
     };
     use sha2::Digest;
     use snix_castore::blob_engine::BlobEngine;
@@ -183,13 +184,13 @@ mod import_builtins {
         expected_sha256: Option<[u8; 32]>,
     ) -> Result<Value, ErrorKind> {
         // Determine the name, either chosen by the user or derived from the path.
-        let name: String = match name {
+        let name: StorePathNameBuf = match name {
             Some(name) => {
                 let nix_str = generators::request_force(&co, name.clone())
                     .await
                     .to_str()?;
 
-                nix_compat::store_path::validate_name(&nix_str)
+                StorePathName::from_slice(&nix_str)
                     .map_err(|err| {
                         ErrorKind::SnixError(Arc::new(
                             nix_compat::store_path::ParseStorePathError::from(err),
@@ -204,7 +205,7 @@ mod import_builtins {
                         "path without basename encountered",
                     )
                 })?;
-                nix_compat::store_path::validate_name_from_os_str(file_name)
+                StorePathName::from_os_str(file_name)
                     .map_err(|err| ErrorKind::SnixError(Arc::new(err)))?
                     .to_owned()
             }
@@ -322,9 +323,8 @@ mod import_builtins {
             Some(ca) => ca,
         };
 
-        let store_path = build_ca_path(&name, recursive_ingestion, &ca.hash(), [], false)
-            .map_err(|e| snix_eval::ErrorKind::SnixError(Arc::from(e)))?
-            .to_owned();
+        let store_path =
+            build_ca_path(&name, recursive_ingestion, &ca.hash(), [], false).to_owned();
 
         let path_info = state
             .tokio_handle
@@ -480,6 +480,14 @@ mod import_builtins {
         let name = name
             .to_str()
             .context("evaluating the `name` parameter of builtins.toFile")?;
+        let name = StorePathName::from_slice(&name)
+            .map_err(|e| {
+                nix_compat::derivation::DerivationError::InvalidDerivationName(
+                    name.to_vec(),
+                    e.into(),
+                )
+            })
+            .map_err(crate::builtins::DerivationError::InvalidDerivation)?;
         let content = content
             .to_contextful_str()
             .context("evaluating the `content` parameter of builtins.toFile")?;
@@ -528,18 +536,10 @@ mod import_builtins {
             .block_on(
                 state.build_state.path_info_service.put(PathInfo {
                     store_path: build_text_path_from_content_digest(
-                        name.to_str()?,
+                        name,
                         content_digest,
                         references,
                     )
-                    .map_err(|_e| {
-                        nix_compat::derivation::DerivationError::InvalidOutputs(
-                            nix_compat::derivation::outputs::OutputsError::InvalidOutputName(
-                                name.to_str_lossy().into_owned(),
-                            ),
-                        )
-                    })
-                    .map_err(crate::builtins::DerivationError::InvalidDerivation)?
                     .to_owned(),
                     node: root_node,
                     // assemble references from plain context.

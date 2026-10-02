@@ -1,8 +1,9 @@
 use std::fmt::Display;
 
-use super::{ParseStorePathError, STORE_DIR, StorePathRef};
+use super::{STORE_DIR, StorePathRef};
 use crate::derivation::OutputName;
 use crate::nixhash::{HashAlgo, NixHash, Sha256};
+use crate::store_path::StorePathName;
 use crate::{format_sha256, nixbase32};
 
 /// compress_hash takes an arbitrarily long sequence of bytes (usually
@@ -29,10 +30,10 @@ pub fn compress_hash<const OUTPUT_SIZE: usize>(input: &[u8]) -> [u8; OUTPUT_SIZE
 /// If you don't want to have to pass the entire contents,
 /// you might want to use [build_text_path_from_content_digest] instead.
 pub fn build_text_path<'r, 'name>(
-    name: &'name str,
+    name: &'name StorePathName,
     content: impl AsRef<[u8]>,
     references: impl IntoIterator<Item = StorePathRef<'r>> + 'r,
-) -> Result<StorePathRef<'name>, ParseStorePathError> {
+) -> StorePathRef<'name> {
     build_text_path_from_content_digest(name, Sha256::digest_bytes(content.as_ref()), references)
 }
 
@@ -40,10 +41,10 @@ pub fn build_text_path<'r, 'name>(
 /// `content_digest` needs to be the sha256 digest of the contents.
 /// If you have the contents as a byte slice, you can also use [build_text_path].
 pub fn build_text_path_from_content_digest<'r, 'n>(
-    name: &'n str,
+    name: &'n StorePathName,
     content_digest: impl Into<Sha256>,
     references: impl IntoIterator<Item = StorePathRef<'r>> + 'r,
-) -> Result<StorePathRef<'n>, ParseStorePathError> {
+) -> StorePathRef<'n> {
     // produce the sha256 digest of the contents
 
     let ty = format_references("text", references, false);
@@ -53,12 +54,12 @@ pub fn build_text_path_from_content_digest<'r, 'n>(
 
 /// This builds a store path for a content-addressed path (used for fetches and FODs).
 pub fn build_ca_path<'r, 'n>(
-    name: &'n str,
+    name: &'n StorePathName,
     is_recursive: bool,
     hash: &NixHash,
     references: impl IntoIterator<Item = StorePathRef<'r>> + 'r,
     has_self_ref: bool,
-) -> Result<StorePathRef<'n>, ParseStorePathError> {
+) -> StorePathRef<'n> {
     let inner_digest = if let NixHash::Sha256(digest) = hash
         && is_recursive
     {
@@ -85,10 +86,10 @@ pub fn build_ca_path<'r, 'n>(
 /// Input-addresed store paths are always derivation outputs, the "input" in question is the
 /// derivation and its closure.
 pub fn build_output_path<'n>(
-    name: &'n str,
+    name: &'n StorePathName,
     hash_derivation_modulo: &Sha256,
     output_name: &OutputName,
-) -> Result<StorePathRef<'n>, ParseStorePathError> {
+) -> StorePathRef<'n> {
     build_store_path_from_fingerprint_parts(
         format_args!("output:{output_name}"),
         hash_derivation_modulo,
@@ -109,8 +110,8 @@ pub fn build_output_path<'n>(
 fn build_store_path_from_fingerprint_parts<'n>(
     ty: impl Display,
     inner_digest: &Sha256,
-    name: &'n str,
-) -> Result<StorePathRef<'n>, ParseStorePathError> {
+    name: &'n StorePathName,
+) -> StorePathRef<'n> {
     let fingerprint_hash = format_sha256!("{ty}:sha256:{inner_digest:x}:{STORE_DIR}:{name}");
     // name validation happens in here.
     StorePathRef::from_name_and_digest_fixed(name, compress_hash(&fingerprint_hash))
@@ -200,6 +201,10 @@ mod test {
     use super::*;
     use crate::{nixhash::NixHash, store_path::StorePathRef};
 
+    fn into_name(name: &'static str) -> &'static StorePathName {
+        StorePathName::from_str(name).expect("valid name {name}")
+    }
+
     #[test]
     fn build_text_path_with_zero_references() {
         // This hash should match `builtins.toFile`, e.g.:
@@ -207,9 +212,7 @@ mod test {
         // nix-repl> builtins.toFile "foo" "bar"
         // "/nix/store/vxjiwkjkn7x4079qvh1jkl5pn05j2aw0-foo"
 
-        let store_path: StorePathRef =
-            build_text_path("foo", "bar", []).expect("build_store_path() should succeed");
-
+        let store_path: StorePathRef = build_text_path(into_name("foo"), "bar", []);
         assert_eq!(
             store_path.to_absolute_path().as_str(),
             "/nix/store/vxjiwkjkn7x4079qvh1jkl5pn05j2aw0-foo"
@@ -223,12 +226,9 @@ mod test {
         // nix-repl> builtins.toFile "baz" "${builtins.toFile "foo" "bar"}"
         // "/nix/store/5xd714cbfnkz02h2vbsj4fm03x3f15nf-baz"
 
-        let inner: StorePathRef =
-            build_text_path("foo", "bar", []).expect("path_with_references() should succeed");
-
-        let outer: StorePathRef = build_text_path("baz", inner.to_absolute_path(), [inner])
-            .expect("path_with_references() should succeed");
-
+        let inner: StorePathRef = build_text_path(into_name("foo"), "bar", []);
+        let outer: StorePathRef =
+            build_text_path(into_name("baz"), inner.to_absolute_path(), [inner]);
         assert_eq!(
             outer.to_absolute_path().as_str(),
             "/nix/store/5xd714cbfnkz02h2vbsj4fm03x3f15nf-baz"
@@ -238,14 +238,12 @@ mod test {
     #[test]
     fn build_sha1_path() {
         let outer: StorePathRef = build_ca_path(
-            "bar",
+            into_name("bar"),
             true,
             &NixHash::Sha1(hex!("0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33")),
             [],
             false,
-        )
-        .expect("path_with_references() should succeed");
-
+        );
         assert_eq!(
             outer.to_absolute_path().as_str(),
             "/nix/store/mp57d33657rf34lzvlbpfa1gjfv5gmpg-bar"
@@ -262,7 +260,7 @@ mod test {
         // $ nix store make-content-addressed /nix/store/5xd714cbfnkz02h2vbsj4fm03x3f15nf-baz
         // rewrote '/nix/store/5xd714cbfnkz02h2vbsj4fm03x3f15nf-baz' to '/nix/store/s89y431zzhmdn3k8r96rvakryddkpv2v-baz'
         let outer: StorePathRef = build_ca_path(
-            "baz",
+            into_name("baz"),
             true,
             &NixHash::Sha256(
                 nixbase32::decode(b"1xqkzcb3909fp07qngljr4wcdnrh1gdam1m2n29i6hhrxlmkgkv1")
@@ -275,9 +273,7 @@ mod test {
                     .expect("to parse"),
             ],
             false,
-        )
-        .expect("path_with_references() should succeed");
-
+        );
         assert_eq!(
             outer.to_absolute_path().as_str(),
             "/nix/store/s89y431zzhmdn3k8r96rvakryddkpv2v-baz"

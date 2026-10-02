@@ -28,14 +28,12 @@ impl From<CAHash> for nar_info::Ca {
 /// Ingest the contents at the given path `path` into castore, and registers the
 /// resulting root node in the passed PathInfoService, using the "NAR sha256
 /// digest" and the passed name for output path calculation.
-/// Inserts the PathInfo into the PathInfoService and returns it back to the caller.
-/// The `name` should have been checked by [nix_compat::store_path::validate_name]
-/// before, to avoid unnecessarily importing, but will prevent the PathInfo from
-/// being created in case of an invalid name.
-#[instrument(skip_all, fields(name=name.as_ref(), path=?path.as_ref()), err)]
+///
+/// This inserts the PathInfo into the PathInfoService and returns it back to the caller.
+#[instrument(skip_all, fields(name=%name.as_ref(), path=?path.as_ref()), err)]
 pub async fn import_path_as_nar_ca<BE, DS, PS, NS, P>(
     path: P,
-    name: impl AsRef<str>,
+    name: impl AsRef<store_path::StorePathName>,
     blob_engine: BE,
     directory_service: DS,
     path_info_service: PS,
@@ -61,15 +59,8 @@ where
 
     let hash = NixHash::Sha256(nar_sha256);
 
-    // Calculate the output path. Will fail if the previously passed name doesn't pass
-    // the [nix_compat::store_path::validate_name] check.
-    let output_path =
-        store_path::build_ca_path(name.as_ref(), true, &hash, [], false).map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("invalid name: {0}", name.as_ref()),
-            )
-        })?;
+    // Calculate the output path.
+    let output_path = store_path::build_ca_path(name.as_ref(), true, &hash, [], false);
 
     // Insert a PathInfo. On success, return it back to the caller.
     path_info_service

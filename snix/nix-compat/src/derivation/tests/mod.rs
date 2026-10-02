@@ -10,6 +10,8 @@ use crate::derivation::{OutputName, OutputsBuilder, lookup_fn};
 use crate::nixhash::Sha256;
 #[cfg(feature = "serde")]
 use crate::store_path::{StorePath, StorePathRef};
+#[cfg(test)]
+use crate::store_path::{StorePathName, StorePathNameBuf};
 #[cfg(feature = "serde")]
 use bstr::{BStr, BString};
 #[cfg(feature = "serde")]
@@ -168,14 +170,14 @@ fn from_aterm_bytes_trailer() {
     "9lj1lkjm2ag622mh4h9rpy6j607an8g2-structured-attrs.drv"
 )]
 #[case::unicode("unicode", "52a9id8hx688hvlnz4d1n25ml1jdykz0-unicode.drv")]
-fn derivation_path(#[case] name: &str, #[case] expected_path: &str) {
+fn derivation_path(#[case] name: StorePathNameBuf, #[case] expected_path: &str) {
     let json_bytes = fs::read(format!("{RESOURCES_PATHS}/ok/{expected_path}.json"))
         .expect("unable to read JSON");
     let derivation: UnverifiedDerivation =
         serde_json::from_slice(&json_bytes).expect("JSON was not well-formatted");
 
     assert_eq!(
-        derivation.calculate_derivation_path(name).unwrap(),
+        derivation.calculate_derivation_path(&name).unwrap(),
         StorePath::from_str(expected_path).unwrap()
     );
 }
@@ -237,7 +239,7 @@ fn hash_derivation_modulo_fixed(#[case] drv_path: &str, #[case] expected_digest:
 #[case::unicode("unicode", "52a9id8hx688hvlnz4d1n25ml1jdykz0-unicode.drv")]
 #[case::cp1252("cp1252", "m1vfixn8iprlf0v9abmlrz7mjw1xj8kp-cp1252.drv")]
 #[case::latin1("latin1", "x6p0hg79i3wg0kkv7699935f7rrj9jf3-latin1.drv")]
-fn output_paths(#[case] name: &str, #[case] drv_path_str: &str) {
+fn output_paths(#[case] name: StorePathNameBuf, #[case] drv_path_str: &str) {
     // read in the derivation
     let expected_derivation = UnverifiedDerivation::from_aterm_bytes(
         &fs::read(format!("{RESOURCES_PATHS}/ok/{drv_path_str}")).expect("unable to read .drv"),
@@ -249,7 +251,7 @@ fn output_paths(#[case] name: &str, #[case] drv_path_str: &str) {
     let builder = derivation_without_output_paths(&expected_derivation);
     let derivation = builder
         .build(
-            name,
+            &name,
             lookup_fn(|parent_drv_path: &StorePathRef| {
                 // 4wvvbi4jwn0prsdxb7vs673qa5h9gr7x-foo.drv may lookup /nix/store/0hm2f1psjpcwg8fijsmr4wwxrx59s092-bar.drv
                 // ch49594n9avinrf8ip0aslidkc4lxkqv-foo.drv may lookup /nix/store/ss2p4wmxijn652haqyd7dckxwl4c7hxx-bar.drv
@@ -356,7 +358,10 @@ fn output_path_construction() {
 
     // calculate bar output paths
     let bar_drv = bar_drv
-        .build("bar", lookup_fn(|_| panic!("is FOD, should not lookup")))
+        .build(
+            StorePathName::from_str("bar").expect("valid name"),
+            lookup_fn(|_| panic!("is FOD, should not lookup")),
+        )
         .expect("must be able to build");
 
     // ensure it matches our bar fixture
@@ -407,7 +412,7 @@ fn output_path_construction() {
     // calculate foo output paths
     let foo_drv = foo_drv
         .build(
-            "foo",
+            StorePathName::from_str("foo").expect("valid name"),
             lookup_fn(|drv_path| {
                 if drv_path.to_string() != "0hm2f1psjpcwg8fijsmr4wwxrx59s092-bar.drv" {
                     panic!("lookup called with unexpected drv_path: {drv_path}");
