@@ -47,6 +47,11 @@ where
 {
     #[instrument(skip_all, err, fields(chunk.digest=%digest, instance_name=%self.instance_name))]
     async fn get(&self, digest: &B3Digest) -> Result<Option<Chunk>, super::Error> {
+        // Easy to reply statically.
+        if digest == &B3Digest::EMPTY {
+            return Ok(Some(Chunk::from_static(&[])));
+        }
+
         let resp = match self
             .client
             .clone()
@@ -80,6 +85,11 @@ where
 
     #[instrument(skip_all, err, fields(chunk.digest=%digest, instance_name=%self.instance_name))]
     async fn has(&self, digest: &B3Digest) -> Result<bool, super::Error> {
+        // Easy to reply statically.
+        if digest == &B3Digest::EMPTY {
+            return Ok(true);
+        }
+
         match self
             .client
             .clone()
