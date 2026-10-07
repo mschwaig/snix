@@ -92,7 +92,7 @@ impl ChunkStore for ObjectStoreChunkStore {
         }
     }
 
-    #[instrument(skip_all, err, ret(Display), fields(instance_name=%self.instance_name))]
+    #[instrument(skip_all, err, fields(instance_name=%self.instance_name))]
     async fn put(&self, chunk: Chunk) -> Result<B3Digest, super::Error> {
         let digest: B3Digest = chunk.digest();
         let p = derive_chunk_path(&self.base_path, &digest);

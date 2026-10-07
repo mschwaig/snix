@@ -92,7 +92,7 @@ where
         }
     }
 
-    #[instrument(skip_all, err, ret(Display), fields(instance_name=%self.instance_name))]
+    #[instrument(skip_all, err, fields(instance_name=%self.instance_name))]
     async fn put(&self, chunk: Chunk) -> Result<B3Digest, super::Error> {
         let chunk_digest: B3Digest = chunk.digest();
         let chunk_len = chunk.len();
