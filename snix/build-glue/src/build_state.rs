@@ -1,10 +1,11 @@
-use std::{cell::RefCell, io, sync::Arc};
+use std::{io, sync::Arc};
 
 use futures::{StreamExt, TryStreamExt as _};
 use nix_compat::{
     nixhash::CAHash,
     store_path::{StorePath, StorePathRef},
 };
+use parking_lot::RwLock;
 use snix_build::buildservice::{BuildService, BuildUpdate};
 use snix_castore::{
     blob_engine::BlobEngine,
@@ -37,7 +38,7 @@ pub struct BuildState {
     >,
 
     // Paths known how to produce, by building or fetching.
-    pub known_paths: RefCell<KnownPaths>,
+    pub known_paths: RwLock<KnownPaths>,
 }
 
 impl BuildState {
@@ -121,7 +122,7 @@ impl BuildState {
             // `builtin:fetchurl` Derivations.
             let maybe_fetch = self
                 .known_paths
-                .borrow()
+                .read()
                 .get_fetch_for_output_path(store_path);
             if let Some((name, fetch)) = maybe_fetch {
                 let (sp, path_info) = self
@@ -140,7 +141,7 @@ impl BuildState {
             } else {
                 // Look up the derivation for this output path.
                 let (drv_path, drv) = {
-                    let known_paths = self.known_paths.borrow();
+                    let known_paths = self.known_paths.read();
                     if let Some(drv_path) = known_paths.get_drv_path_for_output_path(store_path) {
                         (
                             drv_path.to_owned(),
@@ -164,7 +165,7 @@ impl BuildState {
                 // Provide them, which means, here is where we recursively build
                 // all dependencies.
                 let resolved_inputs = {
-                    let known_paths = &self.known_paths.borrow();
+                    let known_paths = &self.known_paths.read();
                     builder::get_all_inputs(&drv, known_paths, |path| {
                         Box::pin(async move {
                             self.store_path_to_path_info(&path.as_ref(), snix_castore::Path::ROOT)

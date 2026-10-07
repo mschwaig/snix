@@ -111,7 +111,7 @@ pub(crate) mod fetcher_builtins {
                 let sp = state
                     .build_state
                     .known_paths
-                    .borrow_mut()
+                    .write()
                     .add_fetch(fetch, &name)
                     .expect("Snix bug: should only fail if the store path cannot be calculated");
 

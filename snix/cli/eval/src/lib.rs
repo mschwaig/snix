@@ -186,7 +186,7 @@ pub fn evaluate<E: std::io::Write + Clone + Send>(
         for (drv_path, drv) in snix_store_io
             .build_state
             .known_paths
-            .borrow()
+            .read()
             .get_derivations()
         {
             match std::fs::File::create_new(dumpdir.join(drv_path.to_string())) {

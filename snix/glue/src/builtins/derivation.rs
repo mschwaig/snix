@@ -408,7 +408,7 @@ pub(crate) mod derivation_builtins {
             );
         }
 
-        let mut known_paths = state.as_ref().build_state.known_paths.borrow_mut();
+        let mut known_paths = state.as_ref().build_state.known_paths.write();
         populate_inputs(&mut drv, input_context, &known_paths);
 
         // Build the Derivation struct, validate and set output paths

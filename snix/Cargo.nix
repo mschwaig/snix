@@ -23161,6 +23161,10 @@ rec {
             packageId = "nix-compat";
           }
           {
+            name = "parking_lot";
+            packageId = "parking_lot";
+          }
+          {
             name = "regex";
             packageId = "regex";
           }

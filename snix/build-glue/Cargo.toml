@@ -16,6 +16,7 @@ bytes.workspace = true
 data-encoding.workspace = true
 futures.workspace = true
 hashbrown.workspace = true
+parking_lot.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
