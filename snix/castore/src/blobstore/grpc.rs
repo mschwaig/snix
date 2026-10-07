@@ -43,6 +43,12 @@ where
 {
     #[instrument(skip_all, err, fields(blob.digest=%digest, instance_name=%self.instance_name))]
     async fn get(&self, digest: &B3Digest) -> Result<Option<BlobMeta>, super::Error> {
+        // We cannot easily convert from [proto::BlobMeta] to [BlobMeta] for the empty blob,
+        // and it's pointless to look it up anyways.
+        if digest == &B3Digest::EMPTY {
+            return Ok(Some(BlobMeta::from_digests_and_sizes([])));
+        }
+
         let resp = match self
             .client
             .clone()
@@ -63,6 +69,11 @@ where
 
     #[instrument(skip_all, err, fields(blob.digest=%digest, instance_name=%self.instance_name))]
     async fn has(&self, digest: &B3Digest) -> Result<bool, super::Error> {
+        // We reply for the empty blob in all cases.
+        if digest == &B3Digest::EMPTY {
+            return Ok(true);
+        }
+
         match self
             .client
             .clone()
