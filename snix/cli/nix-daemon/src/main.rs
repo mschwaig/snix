@@ -2,6 +2,7 @@ use clap::Parser;
 use mimalloc::MiMalloc;
 use nix_compat::nix_daemon::handler::NixDaemon;
 use nix_daemon::SnixDaemon;
+use snix_build::buildservice;
 use snix_castore::blob_engine::BlobServiceEngine;
 use snix_cli::make_listener;
 use snix_store::utils::{ServiceUrlsGrpc, construct_services};
@@ -23,6 +24,21 @@ struct Cli {
 
     #[clap(flatten)]
     tracing_args: snix_tracing::TracingArgs,
+
+    /// Build service URI.
+    ///
+    /// The following schemes are supported by the following services:
+    ///
+    /// * dummy: for a dummy build service
+    ///
+    /// * oci:/path/to/bundle for a OCI build service
+    ///
+    /// * bwrap:/path/to/bundle for a bubblewrap service
+    ///
+    /// * grpc+http://[::1]:8000, grpc+https://[::1]:8000 or grpc+unix:/path/to/socket
+    ///   for a GRPC remote builder.
+    #[arg(long, env, default_value = "dummy:")]
+    build_service_addr: String,
 }
 
 #[tokio::main]
@@ -50,13 +66,25 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 }
 
 async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (blob_service, directory_service, path_info_service, _nar_calculation_service) =
+    let (blob_service, directory_service, path_info_service, nar_calculation_service) =
         construct_services(cli.service_addrs).await?;
 
+    let blob_engine = Arc::new(BlobServiceEngine(blob_service));
+
+    let build_service = buildservice::from_addr(
+        &cli.build_service_addr,
+        blob_engine.clone(),
+        directory_service.clone(),
+    )
+    .await?;
+
     let io = Arc::new(SnixDaemon::new(
-        Arc::new(BlobServiceEngine(blob_service)),
+        blob_engine,
         directory_service,
         path_info_service,
+        nar_calculation_service,
+        build_service,
+        Vec::new(),
     ));
 
     let listen_address = cli.listen_args.listen_address.unwrap_or_else(|| {

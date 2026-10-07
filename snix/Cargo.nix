@@ -14708,6 +14708,14 @@ rec {
             features = [ "daemon" ];
           }
           {
+            name = "snix-build";
+            packageId = "snix-build";
+          }
+          {
+            name = "snix-build-glue";
+            packageId = "snix-build-glue";
+          }
+          {
             name = "snix-castore";
             packageId = "snix-castore";
           }
@@ -14722,6 +14730,10 @@ rec {
           {
             name = "tracing";
             packageId = "tracing";
+          }
+          {
+            name = "url";
+            packageId = "url";
           }
         ];
 
@@ -24402,6 +24414,10 @@ rec {
           {
             name = "nix-daemon";
             packageId = "nix-daemon";
+          }
+          {
+            name = "snix-build";
+            packageId = "snix-build";
           }
           {
             name = "snix-castore";

@@ -8,7 +8,10 @@ rust-version.workspace = true
 nix-compat = { path = "../nix-compat", features = ["daemon"] }
 snix-castore.path = "../castore"
 snix-store.path = "../store"
+snix-build-glue.path = "../build-glue"
+snix-build.path = "../build"
 tokio = { workspace = true }
+url.workspace = true
 tracing.workspace = true
 
 [package.metadata.docs.rs]

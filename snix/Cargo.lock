@@ -3497,10 +3497,13 @@ name = "nix-daemon"
 version = "0.1.0"
 dependencies = [
  "nix-compat",
+ "snix-build",
+ "snix-build-glue",
  "snix-castore",
  "snix-store",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -5482,6 +5485,7 @@ dependencies = [
  "mimalloc",
  "nix-compat",
  "nix-daemon",
+ "snix-build",
  "snix-castore",
  "snix-cli",
  "snix-store",

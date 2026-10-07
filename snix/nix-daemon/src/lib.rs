@@ -20,15 +20,20 @@ use nix_compat::{
     nixhash::CAHashMode,
     store_path::{StorePath, build_ca_path},
 };
+use snix_build::buildservice::BuildService;
+use snix_build_glue::build_state::BuildState;
 use snix_castore::{blob_engine::BlobEngine, directoryservice::DirectoryService};
-use snix_store::{nar::ingest_nar_and_hash, path_info::PathInfo, pathinfoservice::PathInfoService};
+use snix_store::{
+    nar::{NarCalculationService, ingest_nar_and_hash},
+    path_info::PathInfo,
+    pathinfoservice::PathInfoService,
+};
 use tracing::{instrument, warn};
+use url::Url;
 
 #[allow(dead_code)]
 pub struct SnixDaemon {
-    blob_engine: Arc<dyn BlobEngine>,
-    directory_service: Arc<dyn DirectoryService>,
-    path_info_service: Arc<dyn PathInfoService>,
+    build_state: Arc<BuildState>,
 }
 
 impl SnixDaemon {
@@ -36,12 +41,19 @@ impl SnixDaemon {
         blob_engine: Arc<dyn BlobEngine>,
         directory_service: Arc<dyn DirectoryService>,
         path_info_service: Arc<dyn PathInfoService>,
+        nar_calculation_service: Arc<dyn NarCalculationService>,
+        build_service: Arc<dyn BuildService>,
+        hashed_mirrors: Vec<Url>,
     ) -> Self {
-        Self {
+        let build_state = Arc::new(BuildState::new(
             blob_engine,
             directory_service,
             path_info_service,
-        }
+            nar_calculation_service,
+            build_service,
+            hashed_mirrors,
+        ));
+        Self { build_state }
     }
 }
 
@@ -49,8 +61,8 @@ impl SnixDaemon {
 impl NixDaemonIO for SnixDaemon {
     #[instrument(skip_all, fields(path), level = "debug", ret(Debug))]
     async fn query_path_info(&self, path: &StorePath) -> Result<Option<UnkeyedValidPathInfo>> {
-        if let Some(path_info) = self
-            .path_info_service
+        let path_info_service = self.build_state.path_info_service.clone();
+        if let Some(path_info) = path_info_service
             .get(*path.digest())
             .await
             .map_err(std::io::Error::other)?
@@ -67,6 +79,7 @@ impl NixDaemonIO for SnixDaemon {
             .try_into()
             .map_err(|_| Error::other("invalid digest length"))?;
         match self
+            .build_state
             .path_info_service
             .get(digest)
             .await
@@ -89,8 +102,8 @@ impl NixDaemonIO for SnixDaemon {
         R: tokio::io::AsyncRead + Send + Unpin,
     {
         let (root_node, nar_sha256, nar_size) = ingest_nar_and_hash(
-            self.blob_engine.clone(),
-            &self.directory_service,
+            self.build_state.blob_engine.clone(),
+            &self.build_state.directory_service,
             reader,
             &info.info.ca,
         )
@@ -133,7 +146,8 @@ impl NixDaemonIO for SnixDaemon {
             deriver: info.info.deriver,
             ca: info.info.ca,
         };
-        self.path_info_service
+        self.build_state
+            .path_info_service
             .put(path_info)
             .await
             .map_err(|e| Error::other(e.to_string()))?;
@@ -145,14 +159,15 @@ impl NixDaemonIO for SnixDaemon {
         path: &StorePath,
     ) -> std::io::Result<Box<dyn tokio::io::AsyncBufRead + Unpin + Send>> {
         let path_info = self
+            .build_state
             .path_info_service
             .get(*path.digest())
             .await
             .map_err(std::io::Error::other)?
             .ok_or_else(|| std::io::Error::other("unknown store path"))?;
 
-        let blob_engine = self.blob_engine.clone();
-        let directory_service = self.directory_service.clone();
+        let blob_engine = self.build_state.blob_engine.clone();
+        let directory_service = self.build_state.directory_service.clone();
 
         Ok(Box::new(
             snix_store::nar::Reader::new(&path_info.node, blob_engine, directory_service)
