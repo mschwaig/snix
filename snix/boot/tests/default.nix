@@ -30,7 +30,8 @@ let
       # Test name.
       name,
 
-      blobServiceAddr ? "memory:",
+      blobStoreAddr ? "memory:",
+      chunkStoreAddr ? "memory:",
       directoryServiceAddr ? "redb+memory:",
       pathInfoServiceAddr ? "redb+memory:",
 
@@ -86,7 +87,8 @@ let
           ${preStart}
 
           # Start the snix daemon, listening on a unix socket.
-          BLOB_SERVICE_ADDR=${lib.escapeShellArg blobServiceAddr} \
+          BLOB_STORE_ADDR=${lib.escapeShellArg blobStoreAddr} \
+          CHUNK_STORE_ADDR=${lib.escapeShellArg chunkStoreAddr} \
           DIRECTORY_SERVICE_ADDR=${lib.escapeShellArg directoryServiceAddr} \
           PATH_INFO_SERVICE_ADDR=${lib.escapeShellArg pathInfoServiceAddr} \
             snix-store daemon -l $PWD/snix-store.sock &
@@ -96,7 +98,8 @@ let
 
           # Export env vars so that subsequent snix-store commands will talk to
           # our snix store daemon over the unix socket.
-          export BLOB_SERVICE_ADDR=grpc+unix:$PWD/snix-store.sock
+          export BLOB_STORE_ADDR=grpc+unix:$PWD/snix-store.sock
+          export CHUNK_STORE_ADDR=grpc+unix:$PWD/snix-store.sock
           export DIRECTORY_SERVICE_ADDR=grpc+unix:$PWD/snix-store.sock
           export PATH_INFO_SERVICE_ADDR=grpc+unix:$PWD/snix-store.sock
         ''
@@ -194,7 +197,8 @@ depot.nix.readTree.drvTargets {
   website-persistent = (
     mkBootTest {
       name = "website-persistent";
-      blobServiceAddr = "objectstore+file:/build/blobs";
+      blobStoreAddr = "objectstore+file:/build/blobs";
+      chunkStoreAddr = "objectstore+file:/build/blobs";
       directoryServiceAddr = "redb:/build/directories.redb";
       pathInfoServiceAddr = "redb:/build/pathinfo.redb";
       path = listStoreInit;
@@ -207,7 +211,8 @@ depot.nix.readTree.drvTargets {
   closure-snix = (
     mkBootTest {
       name = "closure-snix";
-      blobServiceAddr = "objectstore+file:/build/blobs";
+      blobStoreAddr = "objectstore+file:/build/blobs";
+      chunkStoreAddr = "objectstore+file:/build/blobs";
       path = listStoreInit;
       extraPaths = [ depot.snix.store ];
       bootCmdline = "init=${listStoreInit}";
@@ -218,7 +223,8 @@ depot.nix.readTree.drvTargets {
   closure-nixos = (
     mkBootTest {
       name = "closure-nixos";
-      blobServiceAddr = "objectstore+file:/build/blobs";
+      blobStoreAddr = "objectstore+file:/build/blobs";
+      chunkStoreAddr = "objectstore+file:/build/blobs";
       directoryServiceAddr = "redb:/build/directories.redb";
       pathInfoServiceAddr = "redb:/build/pathinfo.redb";
       path = testSystem;
@@ -230,7 +236,8 @@ depot.nix.readTree.drvTargets {
   closure-nixos-bigtable = (
     mkBootTest {
       name = "closure-nixos-bigtable";
-      blobServiceAddr = "objectstore+file:/build/blobs";
+      blobStoreAddr = "objectstore+file:/build/blobs";
+      chunkStoreAddr = "objectstore+file:/build/blobs";
       directoryServiceAddr = "bigtable://instance-1?project_id=project-1&table_name=directories&family_name=cf1";
       pathInfoServiceAddr = "bigtable://instance-1?project_id=project-1&table_name=pathinfos&family_name=cf1";
       useNarBridge = true;
@@ -253,7 +260,8 @@ depot.nix.readTree.drvTargets {
   closure-nixos-s3 = (
     mkBootTest {
       name = "closure-nixos-s3";
-      blobServiceAddr = "objectstore+s3://mybucket/blobs?aws_access_key_id=myaccesskey&aws_secret_access_key=supersecret&aws_endpoint_url=http%3A%2F%2Flocalhost%3A8333&aws_allow_http=1";
+      blobStoreAddr = "objectstore+s3://mybucket/blobs?aws_access_key_id=myaccesskey&aws_secret_access_key=supersecret&aws_endpoint_url=http%3A%2F%2Flocalhost%3A8333&aws_allow_http=1";
+      chunkStoreAddr = "objectstore+s3://mybucket/blobs?aws_access_key_id=myaccesskey&aws_secret_access_key=supersecret&aws_endpoint_url=http%3A%2F%2Flocalhost%3A8333&aws_allow_http=1";
       # we cannot use s3 here yet without any caching layer, as we don't allow "deeper" access to directories (non-root nodes)
       # directoryServiceAddr = "objectstore+s3://mybucket/directories?aws_access_key_id=myaccesskey&aws_secret_access_key=supersecret&endpoint=http%3A%2F%2Flocalhost%3A8333&aws_allow_http=1";
       directoryServiceAddr = "redb+memory:";
@@ -276,7 +284,8 @@ depot.nix.readTree.drvTargets {
   closure-nixos-nar-bridge = (
     mkBootTest {
       name = "closure-nixos-nar-bridge";
-      blobServiceAddr = "objectstore+file:/build/blobs";
+      blobStoreAddr = "objectstore+file:/build/blobs";
+      chunkStoreAddr = "objectstore+file:/build/blobs";
       useNarBridge = true;
       path = testSystem;
       bootCmdline = "init=${testSystem}/init";

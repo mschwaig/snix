@@ -1,13 +1,12 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+use std::fmt::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::{fmt::Write, sync::Arc};
 
 use rustc_hash::FxHashMap;
 use smol_str::SmolStr;
 use snix_build::buildservice;
-use snix_castore::blob_engine::BlobServiceEngine;
 use snix_eval::{
     ErrorKind, EvalIO, EvalMode, GlobalsMap, SourceCode, Value,
     builtins::impure_builtins,
@@ -30,12 +29,16 @@ pub use args::Args;
 pub use repl::Repl;
 
 pub async fn init_io_handle(args: &Args) -> SnixStoreIO {
-    let (blob_service, directory_service, path_info_service, nar_calculation_service) =
-        snix_store::utils::construct_services(args.service_addrs.clone())
-            .await
-            .expect("unable to setup {blob|directory|pathinfo}service before interpreter setup");
-
-    let blob_engine = Arc::new(BlobServiceEngine(blob_service));
+    let (
+        _blob_store,
+        _chunk_store,
+        blob_engine,
+        directory_service,
+        path_info_service,
+        nar_calculation_service,
+    ) = snix_store::utils::construct_services(args.service_addrs.clone())
+        .await
+        .expect("unable to setup [ca]stores before interpreter setup");
 
     let build_service = buildservice::from_addr(
         &args.build_service_addr,
@@ -46,7 +49,7 @@ pub async fn init_io_handle(args: &Args) -> SnixStoreIO {
     .expect("unable to setup buildservice before interpreter setup");
 
     SnixStoreIO::new(
-        blob_engine.clone(),
+        blob_engine,
         directory_service,
         path_info_service,
         nar_calculation_service,

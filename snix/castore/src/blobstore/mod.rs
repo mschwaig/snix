@@ -17,7 +17,7 @@ use crate::{
     composition::{Registry, ServiceBuilder},
 };
 pub use blob_meta::BlobMeta;
-pub use blob_reader::{BlobReader, ExactBlobReader};
+pub use blob_reader::{BlobReader, LimitBlobReader};
 pub use blob_writer::BlobWriter;
 
 /// Retrieves and stores [BlobMeta] about Blobs.

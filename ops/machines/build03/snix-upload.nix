@@ -12,11 +12,13 @@ let
   store_url = "grpc+https://cache.snix.dev?tls-client-cert-path=${tls_client_cert_path}&tls-client-key-path=${tls_client_key_path}";
 
   storeCompositionFile = (pkgs.formats.toml { }).generate "store-composition.toml" {
-    blobservices = {
-      root = {
-        type = "grpc";
-        url = store_url;
-      };
+    blob_stores.root = {
+      type = "grpc";
+      url = store_url;
+    };
+    chunk_stores.root = {
+      type = "grpc";
+      url = store_url;
     };
 
     directoryservices = {

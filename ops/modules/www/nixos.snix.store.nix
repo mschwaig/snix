@@ -62,8 +62,10 @@
             add_header Access-Control-Allow-Origin *;
           '';
         };
-        locations."/snix.castore.v1.BlobService/Stat".extraConfig = passToSnixStoreDaemonAll;
-        locations."/snix.castore.v1.BlobService/Read".extraConfig = passToSnixStoreDaemonAll;
+        locations."/snix.castore.v1.BlobStoreService/GetBlob".extraConfig = passToSnixStoreDaemonAll;
+        locations."/snix.castore.v1.BlobStoreService/StatBlob".extraConfig = passToSnixStoreDaemonAll;
+        locations."/snix.castore.v1.ChunkStoreService/GetChunk".extraConfig = passToSnixStoreDaemonAll;
+        locations."/snix.castore.v1.ChunkStoreService/StatChunk".extraConfig = passToSnixStoreDaemonAll;
         locations."/snix.castore.v1.DirectoryService/Get".extraConfig = passToSnixStoreDaemonAll;
 
         locations."/snix.store.v1.PathInfoService/Get".extraConfig = passToSnixStoreDaemonAll;

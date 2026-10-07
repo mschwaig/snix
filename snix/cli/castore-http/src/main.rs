@@ -1,6 +1,5 @@
 use clap::Parser;
 use snix_castore::Node;
-use snix_castore::blob_engine::BlobServiceEngine;
 use snix_castore::{B3Digest, utils::ServiceUrlsGrpc};
 use snix_castore_http::app_state::AppConfig;
 use snix_cli::shutdown_signal;
@@ -37,13 +36,13 @@ async fn main() -> anyhow::Result<()> {
         .handle_tracing_args(&args.tracing_args)
         .build()?;
 
-    let (blob_service, directory_service) =
+    let (_blob_store, _chunk_store, blob_engine, directory_service) =
         snix_castore::utils::construct_services(args.service_addrs)
             .await
             .expect("failed to construct services");
 
     let state = Arc::new(AppConfig {
-        blob_engine: Arc::new(BlobServiceEngine(blob_service)),
+        blob_engine,
         directory_service,
         root_node: Node::Directory {
             digest: args.root_directory,

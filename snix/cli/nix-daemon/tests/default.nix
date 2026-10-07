@@ -9,7 +9,8 @@ let
   mkTest =
     {
       closure,
-      blobServiceAddr ? "objectstore+file:/tmp/blobs",
+      blobStoreAddr ? "objectstore+file:/tmp/blobs",
+      chunkStoreAddr ? "objectstore+file:/tmp/blobs",
       directoryServiceAddr ? "redb:/tmp/directories.redb",
       pathInfoServiceAddr ? "redb:/tmp/pathinfo.redb",
       testScript, # FUTUREWORK: make overlay setup configurable for non-local-overlay tests?
@@ -33,7 +34,8 @@ let
           export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
 
           # Start the snix daemon, listening on a unix socket.
-          BLOB_SERVICE_ADDR=${lib.escapeShellArg blobServiceAddr} \
+          BLOB_STORE_ADDR=${lib.escapeShellArg blobStoreAddr} \
+          CHUNK_STORE_ADDR=${lib.escapeShellArg chunkStoreAddr} \
           DIRECTORY_SERVICE_ADDR=${lib.escapeShellArg directoryServiceAddr} \
           PATH_INFO_SERVICE_ADDR=${lib.escapeShellArg pathInfoServiceAddr} \
             snix store daemon -l $PWD/snix-store.sock &
@@ -43,7 +45,8 @@ let
 
           # Export env vars so that subsequent snix-store commands will talk to
           # our snix-store daemon over the unix socket.
-          export BLOB_SERVICE_ADDR=grpc+unix:$PWD/snix-store.sock
+          export BLOB_STORE_ADDR=grpc+unix:$PWD/snix-store.sock
+          export CHUNK_STORE_ADDR=grpc+unix:$PWD/snix-store.sock
           export DIRECTORY_SERVICE_ADDR=grpc+unix:$PWD/snix-store.sock
           export PATH_INFO_SERVICE_ADDR=grpc+unix:$PWD/snix-store.sock
 

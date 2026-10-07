@@ -42,7 +42,12 @@ It uses the systemd credentials system to pass in an `AWS_CONFIG_FILE` pointing 
 services.snix-store-daemon = {
   enable = true;
   settings = {
-    blobservices.root = {
+    blob_stores.root = {
+      type = "objectstore";
+      object_store_url = "s3://snix-ci-cache/blobs";
+      object_store_options = { };
+    };
+    chunk_stores.root = {
       type = "objectstore";
       object_store_url = "s3://snix-ci-cache/blobs";
       object_store_options = { };
@@ -74,7 +79,12 @@ The configuration is quite simple:
 services.nar-bridge = {
   enable = true;
   settings = {
-    blobservices.root = {
+    blob_stores.root = {
+      type = "grpc";
+      url = "grpc+unix:/run/snix-store-daemon.sock";
+    };
+
+    chunk_stores.root = {
       type = "grpc";
       url = "grpc+unix:/run/snix-store-daemon.sock";
     };
@@ -163,9 +173,12 @@ in
       "/grpc.reflection.v1alpha.ServerReflection" = passToSnixStoreDaemonAll;
       "/grpc.reflection.v1.ServerReflection" = passToSnixStoreDaemonAll;
 
-      "/snix.castore.v1.BlobService/Put" = passToSnixStoreDaemonTrusted;
-      "/snix.castore.v1.BlobService/Read" = passToSnixStoreDaemonAll;
-      "/snix.castore.v1.BlobService/Stat" = passToSnixStoreDaemonAll;
+      "/snix.castore.v1.BlobStoreService/GetBlob" = passToSnixStoreDaemonAll;
+      "/snix.castore.v1.BlobStoreService/StatBlob" = passToSnixStoreDaemonAll;
+      "/snix.castore.v1.BlobStoreService/PutBlob" = passToSnixStoreDaemonTrusted;
+      "/snix.castore.v1.ChunkStoreService/StatChunk" = passToSnixStoreDaemonAll;
+      "/snix.castore.v1.ChunkStoreService/GetChunk" = passToSnixStoreDaemonAll;
+      "/snix.castore.v1.ChunkStoreService/PutChunk" = passToSnixStoreDaemonTrusted;
       "/snix.castore.v1.DirectoryService/Get" = passToSnixStoreDaemonAll;
       "/snix.castore.v1.DirectoryService/Put" = passToSnixStoreDaemonTrusted;
 
@@ -200,7 +213,11 @@ This obviously is suboptimal, so we will instead switch to the `snix-store uploa
 To use `snix-store upload`, we first write a composition config that implements signing:
 
 ```toml
-[blobservices.root]
+[blob_stores.root]
+type = "grpc"
+url = "grpc+https://cache.example.com?tls-client-cert-path=/run/secrets/cert.pem&tls-client-key-path=/run/secrets/key.pem"
+
+[chunk_stores.root]
 type = "grpc"
 url = "grpc+https://cache.example.com?tls-client-cert-path=/run/secrets/cert.pem&tls-client-key-path=/run/secrets/key.pem"
 

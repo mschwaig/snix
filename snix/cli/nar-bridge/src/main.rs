@@ -3,10 +3,9 @@ use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
 use clap::Parser;
 use mimalloc::MiMalloc;
 use nar_bridge::AppState;
-use snix_castore::blob_engine::BlobServiceEngine;
 use snix_cli::shutdown_signal;
 use snix_store::utils::ServiceUrlsGrpc;
-use std::{num::NonZeroUsize, sync::Arc};
+use std::num::NonZeroUsize;
 use tracing::info;
 
 #[global_allocator]
@@ -54,11 +53,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build()?;
 
     // initialize stores
-    let (blob_service, directory_service, path_info_service, _nar_calculation_service) =
-        snix_store::utils::construct_services(args.service_addrs).await?;
+    let (
+        _blob_store,
+        _chunk_store,
+        blob_engine,
+        directory_service,
+        path_info_service,
+        _nar_calculation_service,
+    ) = snix_store::utils::construct_services(args.service_addrs).await?;
 
     let state = AppState::new(
-        Arc::new(BlobServiceEngine(blob_service)),
+        blob_engine.clone(),
         directory_service,
         path_info_service,
         args.root_nodes_cache_capacity,

@@ -21,7 +21,13 @@ in
     package = depot.snix.cli.store.with-features-xp-store-composition-cli;
 
     settings = {
-      blobservices.root = {
+      blob_stores.root = {
+        type = "objectstore";
+        object_store_url = "s3://snix-ci-cache/blobs";
+        object_store_options = { };
+      };
+
+      chunk_stores.root = {
         type = "objectstore";
         object_store_url = "s3://snix-ci-cache/blobs";
         object_store_options = { };
@@ -49,7 +55,12 @@ in
     package = depot.snix.cli.nar-bridge.with-features-xp-store-composition-cli;
 
     settings = {
-      blobservices.root = {
+      blob_stores.root = {
+        type = "grpc";
+        url = "grpc+unix:/run/snix-store-daemon.sock";
+      };
+
+      chunk_stores.root = {
         type = "grpc";
         url = "grpc+unix:/run/snix-store-daemon.sock";
       };

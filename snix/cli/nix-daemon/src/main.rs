@@ -3,7 +3,6 @@ use mimalloc::MiMalloc;
 use nix_compat::nix_daemon::handler::NixDaemon;
 use nix_daemon::SnixDaemon;
 use snix_build::buildservice;
-use snix_castore::blob_engine::BlobServiceEngine;
 use snix_cli::make_listener;
 use snix_store::utils::{ServiceUrlsGrpc, construct_services};
 use std::{error::Error, sync::Arc};
@@ -66,10 +65,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 }
 
 async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (blob_service, directory_service, path_info_service, nar_calculation_service) =
-        construct_services(cli.service_addrs).await?;
-
-    let blob_engine = Arc::new(BlobServiceEngine(blob_service));
+    let (
+        _blob_store,
+        _chunk_store,
+        blob_engine,
+        directory_service,
+        path_info_service,
+        nar_calculation_service,
+    ) = construct_services(cli.service_addrs).await?;
 
     let build_service = buildservice::from_addr(
         &cli.build_service_addr,

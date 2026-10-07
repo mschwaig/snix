@@ -2,7 +2,6 @@ use clap::Parser;
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use mimalloc::MiMalloc;
 use snix_build::buildservice::DummyBuildService;
-use snix_castore::blob_engine::BlobServiceEngine;
 use snix_eval::{EvalIO, builtins::impure_builtins};
 use snix_glue::{
     builtins::{add_derivation_builtins, add_fetcher_builtins, add_import_builtins},
@@ -24,16 +23,22 @@ fn interpret(code: &str) {
     // TODO: this is a bit annoying.
     // It'd be nice if we could set this up once and then run evaluate() with a
     // piece of code. b/262
-    let (blob_service, directory_service, path_info_service, nar_calculation_service) =
-        TOKIO_RUNTIME
-            .block_on(async {
-                construct_services(ServiceUrlsMemory::parse_from(std::iter::empty::<&str>())).await
-            })
-            .unwrap();
+    let (
+        _blob_store,
+        _chunk_store,
+        blob_engine,
+        directory_service,
+        path_info_service,
+        nar_calculation_service,
+    ) = TOKIO_RUNTIME
+        .block_on(async {
+            construct_services(ServiceUrlsMemory::parse_from(std::iter::empty::<&str>())).await
+        })
+        .unwrap();
 
     // We assemble a complete store in memory.
     let snix_store_io = Rc::new(SnixStoreIO::new(
-        Arc::new(BlobServiceEngine(blob_service)),
+        blob_engine,
         directory_service,
         path_info_service,
         nar_calculation_service,

@@ -1,10 +1,6 @@
 use clap::{Parser, Subcommand};
-use snix_castore::blob_engine::BlobServiceEngine;
 use snix_castore::directoryservice;
 use snix_castore::import::{archive::ingest_archive, fs::ingest_path};
-use snix_castore::proto::blob_service_server::BlobServiceServer;
-use snix_castore::proto::directory_service_server::DirectoryServiceServer;
-use snix_castore::proto::{GRPCBlobServiceWrapper, GRPCDirectoryServiceWrapper};
 use snix_castore::{Node, utils::ServiceUrls};
 use snix_cli::{make_listener, shutdown_signal};
 use std::error::Error;
@@ -104,7 +100,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             listen_args,
             service_addrs,
         } => {
-            let (blob_service, directory_service) =
+            use snix_castore::proto::{
+                GRPCBlobStoreWrapper, GRPCChunkStoreWrapper, GRPCDirectoryServiceWrapper,
+                blob_store_service_server::BlobStoreServiceServer,
+                chunk_store_service_server::ChunkStoreServiceServer,
+                directory_service_server::DirectoryServiceServer,
+            };
+
+            let (blob_store, chunk_store, _blob_engine, directory_service) =
                 snix_castore::utils::construct_services(service_addrs).await?;
 
             #[cfg_attr(feature = "otlp", allow(unused_mut))]
@@ -128,8 +131,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             #[allow(unused_mut)]
             let mut router = server
                 .add_service(health_service)
-                .add_service(BlobServiceServer::new(GRPCBlobServiceWrapper::new(
-                    blob_service,
+                .add_service(ChunkStoreServiceServer::new(GRPCChunkStoreWrapper::new(
+                    chunk_store,
+                )))
+                .add_service(BlobStoreServiceServer::new(GRPCBlobStoreWrapper::new(
+                    blob_store,
                 )))
                 .add_service(
                     DirectoryServiceServer::new(GRPCDirectoryServiceWrapper::new(
@@ -171,26 +177,15 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             input,
             service_addrs,
         } => {
-            let (blob_service, directory_service) =
+            let (_blob_store, _chunk_store, blob_engine, directory_service) =
                 snix_castore::utils::construct_services(service_addrs).await?;
 
             let metadata = fs::metadata(&input).await?;
             let node = if metadata.is_dir() {
-                ingest_path::<_, _, _, &[u8]>(
-                    BlobServiceEngine(&blob_service),
-                    &directory_service,
-                    &input,
-                    None,
-                )
-                .await?
+                ingest_path::<_, _, _, &[u8]>(blob_engine, &directory_service, &input, None).await?
             } else {
                 let mut file = File::open(&input).await?;
-                ingest_archive(
-                    BlobServiceEngine(blob_service.clone()),
-                    &directory_service,
-                    &mut file,
-                )
-                .await?
+                ingest_archive(blob_engine, &directory_service, &mut file).await?
             };
             let digest = match node {
                 Node::Directory { digest, .. } => digest,
@@ -207,10 +202,13 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             uid_gid,
             show_xattr,
         } => {
-            let (blob_service, directory_service) =
-                snix_castore::utils::construct_services(service_addrs).await?;
+            use snix_castore::{
+                blob_engine::BlobEngine,
+                fs::{FSSettings, SnixStoreFs, fuse::FuseDaemon},
+            };
 
-            use snix_castore::fs::{FSSettings, SnixStoreFs, fuse::FuseDaemon};
+            let (_blob_store, _chunk_store, blob_engine, directory_service) =
+                snix_castore::utils::construct_services(service_addrs).await?;
 
             let digest = digest.parse()?;
             let directory = directory_service
@@ -219,8 +217,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 .ok_or("Root directory not found")?;
 
             let fuse_daemon = tokio::task::spawn_blocking(move || {
-                let fs = SnixStoreFs::new(
-                    BlobServiceEngine(blob_service),
+                let fs: SnixStoreFs<dyn BlobEngine, _, _> = SnixStoreFs::new(
+                    blob_engine,
                     directory_service,
                     directory,
                     FSSettings {
@@ -259,10 +257,13 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             uid_gid,
             show_xattr,
         } => {
-            let (blob_service, directory_service) =
-                snix_castore::utils::construct_services(service_addrs).await?;
+            use snix_castore::{
+                blob_engine::BlobEngine,
+                fs::{FSSettings, SnixStoreFs, virtiofs::start_virtiofs_daemon},
+            };
 
-            use snix_castore::fs::{FSSettings, SnixStoreFs, virtiofs::start_virtiofs_daemon};
+            let (_blob_store, _chunk_store, blob_engine, directory_service) =
+                snix_castore::utils::construct_services(service_addrs).await?;
 
             let digest = digest.parse()?;
             let directory = directory_service
@@ -271,8 +272,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 .ok_or("Root directory not found")?;
 
             tokio::task::spawn_blocking(move || {
-                let fs = SnixStoreFs::new(
-                    BlobServiceEngine(blob_service),
+                let fs: SnixStoreFs<dyn BlobEngine, _, _> = SnixStoreFs::new(
+                    blob_engine,
                     directory_service,
                     directory,
                     FSSettings {

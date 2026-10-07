@@ -11,11 +11,14 @@ use nix_compat::{
 };
 use reqwest::StatusCode;
 use snix_castore::{
-    blob_engine::BlobServiceEngine,
-    blobservice::{self, BlobService},
+    blob_engine,
+    blobstore::{self, BlobStore},
+    chunkstore::{self, ChunkStore},
     directoryservice::{self, DirectoryService},
     proto::{
-        blob_service_client::BlobServiceClient, directory_service_client::DirectoryServiceClient,
+        blob_store_service_client::BlobStoreServiceClient,
+        chunk_store_service_client::ChunkStoreServiceClient,
+        directory_service_client::DirectoryServiceClient,
     },
 };
 use snix_castore::{
@@ -35,28 +38,41 @@ mod castore_infused;
 /// Store Model.
 /// It implements the [PathInfoService] trait in an interesting way:
 /// Every [PathInfoService::get] fetches the .narinfo and referred NAR file,
-/// inserting components into a [BlobService] and [DirectoryService], then
-/// returning a [PathInfo] struct with the root.
+/// inserting components into a [BlobStore] / [ChunkStore] (via BlobEngine)
+/// and [DirectoryService], then returning a [PathInfo] struct with the root.
 ///
 /// Due to this being quite a costly operation, clients are expected to layer
 /// this service with store composition, so they're only ingested once.
 ///
-/// The client is expected to be (indirectly) using the same [BlobService] and
+/// The client is expected to be (indirectly) using the same [BlobStore] and
 /// [DirectoryService], so able to fetch referred Directories and Blobs.
 /// [PathInfoService::put] is not implemented and returns an error if called.
 /// TODO: what about reading from nix-cache-info?
-pub struct NixHTTPPathInfoService<BS: Clone, DS> {
+pub struct NixHTTPPathInfoService<BS, CS, DS> {
     instance_name: String,
     base_url: url::Url,
     http_client: reqwest_middleware::ClientWithMiddleware,
 
-    blob_service: BS,
     directory_service: DS,
 
-    /// A BlobService Cache with 'far' talking to the configured endpoint over gRPC.
+    /// A [BlobEngine] created from the [BlobStore] and [ChunkStore] passed via the constructor.
+    ///
+    /// [BlobEngine]: [snix_castore::blob_engine::BlobEngine]
+    blob_engine: Arc<blob_engine::ChunkingBlobEngine<BS, CS>>,
+
+    /// A [BlobEngine] with [BlobStore] and [ChunkStore] set to cache combinators,
+    /// with 'far' talking to the configured endpoint over gRPC,
+    /// and 'near' to the regular stores.
     /// This is used when validating castore-infused NAR URLs in NARInfos.
     /// We rely on Cache to *insert* into 'near'.
-    layered_blob_service: blobservice::Cache<BS, blobservice::GRPCBlobService<Channel>>,
+    ///
+    /// [BlobEngine]: [snix_castore::blob_engine::BlobEngine]
+    #[allow(clippy::type_complexity)]
+    layered_blob_engine: blob_engine::ChunkingBlobEngine<
+        Arc<blobstore::combinators::Cache<BS, blobstore::grpc::GrpcBlobStore<Channel>>>,
+        Arc<chunkstore::combinators::Cache<CS, chunkstore::grpc::GrpcChunkStore<Channel>>>,
+    >,
+
     /// A DirectoryService Cache with 'far' talking to the configured endpoint over gRPC.
     /// This is used when validating castore-infused NAR URLs in NARInfos.
     /// We rely on Cache to *insert* into 'near'.
@@ -72,15 +88,17 @@ pub struct NixHTTPPathInfoService<BS: Clone, DS> {
     force_download_nar: bool,
 }
 
-impl<BS, DS> NixHTTPPathInfoService<BS, DS>
+impl<BS, CS, DS> NixHTTPPathInfoService<BS, CS, DS>
 where
-    BS: Clone,
+    BS: BlobStore + Clone,
+    CS: ChunkStore + Clone,
     DS: DirectoryService + Clone,
 {
     pub fn try_build(
         instance_name: String,
         config: NixHTTPPathInfoServiceConfig,
-        blob_service: BS,
+        blob_store: BS,
+        chunk_store: CS,
         directory_service: DS,
     ) -> Result<Self, Error> {
         let mut trusted_public_keys = Vec::new();
@@ -90,7 +108,18 @@ where
             )
         }
 
-        let (layered_blob_service, layered_directory_service) = {
+        // We use the passed [BlobStore] / [ChunkStore] to create and store a [BlobEngine].
+        // We also construct a second [BlobEngine], pointed to a cache [BlobStore] and [ChunkStore] instance
+        // which sets the gRPC endpoint as far and the regular stores as "near".
+        // We also construct a similarly wrapped [DirectoryService].
+        let blob_engine = Arc::new(
+            snix_castore::blob_engine::ChunkingBlobEngine::builder()
+                .blob_store(blob_store.clone())
+                .chunk_store(chunk_store.clone())
+                .build(),
+        );
+
+        let (layered_blob_engine, layered_directory_service) = {
             let grpc_url = {
                 let url_str = format!("grpc+{}", config.base_url);
                 let mut url: Url = url_str.parse().expect("url to parse");
@@ -104,27 +133,42 @@ where
             let instance_name_layered = format!("{}-layered", instance_name);
             let instance_name_grpc = format!("{}-grpc", instance_name);
 
+            let layered_blob_store = blobstore::combinators::Cache::new(
+                instance_name_layered.clone(),
+                blob_store.clone(),
+                blobstore::grpc::GrpcBlobStore::from_client(
+                    instance_name_grpc.clone(),
+                    BlobStoreServiceClient::new(channel.clone()),
+                ),
+            );
+            let layered_chunk_store = chunkstore::combinators::Cache::new(
+                instance_name_layered.clone(),
+                chunk_store.clone(),
+                chunkstore::grpc::GrpcChunkStore::from_client(
+                    instance_name_grpc.clone(),
+                    ChunkStoreServiceClient::new(channel.clone()),
+                ),
+            );
+
+            let layered_directory_service = directoryservice::combinators::Cache::new(
+                instance_name_layered,
+                directory_service.clone(),
+                {
+                    GRPCDirectoryService::from_client(
+                        instance_name_grpc,
+                        DirectoryServiceClient::new(channel).max_decoding_message_size(
+                            directoryservice::GRPC_MAX_DECODING_MESSAGE_SIZE,
+                        ),
+                    )
+                },
+            );
+
             (
-                blobservice::Cache::new(
-                    instance_name_layered.clone(),
-                    blob_service.clone(),
-                    blobservice::GRPCBlobService::from_client(
-                        instance_name_grpc.clone(),
-                        BlobServiceClient::new(channel.clone()),
-                    ),
-                ),
-                directoryservice::combinators::Cache::new(
-                    instance_name_layered,
-                    directory_service.clone(),
-                    {
-                        GRPCDirectoryService::from_client(
-                            instance_name_grpc,
-                            DirectoryServiceClient::new(channel).max_decoding_message_size(
-                                directoryservice::GRPC_MAX_DECODING_MESSAGE_SIZE,
-                            ),
-                        )
-                    },
-                ),
+                snix_castore::blob_engine::ChunkingBlobEngine::builder()
+                    .blob_store(Arc::new(layered_blob_store))
+                    .chunk_store(Arc::new(layered_chunk_store))
+                    .build(),
+                layered_directory_service,
             )
         };
 
@@ -147,10 +191,10 @@ where
             )
             .with(snix_tracing::propagate::reqwest::tracing_middleware())
             .build(),
-            blob_service,
+            blob_engine,
             directory_service,
 
-            layered_blob_service,
+            layered_blob_engine,
             layered_directory_service,
 
             trusted_public_keys,
@@ -211,9 +255,10 @@ pub enum Error {
 }
 
 #[async_trait]
-impl<BS, DS> PathInfoService for NixHTTPPathInfoService<BS, DS>
+impl<BS, CS, DS> PathInfoService for NixHTTPPathInfoService<BS, CS, DS>
 where
-    BS: BlobService + Send + Sync + Clone + 'static,
+    BS: BlobStore + Send + Sync + Clone + 'static,
+    CS: ChunkStore + Send + Sync + Clone + 'static,
     DS: DirectoryService + Send + Sync + Clone + 'static,
 {
     #[instrument(skip_all, err, fields(
@@ -278,7 +323,7 @@ where
         let root_node = if !self.force_download_nar
             && let Some(root_node) = try_infused_nar_path(
                 &narinfo,
-                BlobServiceEngine(self.layered_blob_service.clone()),
+                &self.layered_blob_engine,
                 &self.layered_directory_service,
             )
             .await
@@ -334,7 +379,7 @@ where
             };
 
             let (root_node, nar_hash, nar_size) = ingest_nar_and_hash(
-                BlobServiceEngine(self.blob_service.clone()),
+                self.blob_engine.clone(),
                 &self.directory_service,
                 &mut r,
                 &narinfo.ca,
@@ -426,8 +471,10 @@ pub struct NixHTTPPathInfoServiceConfig {
 #[derive(serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct NixHTTPPathInfoServiceParams {
-    #[serde(default = "default_blob_service")]
-    blob_service: String,
+    #[serde(default = "default_blob_store")]
+    blob_store: String,
+    #[serde(default = "default_chunk_store")]
+    chunk_store: String,
     #[serde(default = "default_directory_service")]
     directory_service: String,
     #[serde(default)]
@@ -440,7 +487,10 @@ struct NixHTTPPathInfoServiceParams {
     force_download_nar: bool,
 }
 
-fn default_blob_service() -> String {
+fn default_blob_store() -> String {
+    "&root".to_string()
+}
+fn default_chunk_store() -> String {
     "&root".to_string()
 }
 fn default_directory_service() -> String {
@@ -494,14 +544,16 @@ impl ServiceBuilder for NixHTTPPathInfoServiceConfig {
         instance_name: &str,
         context: &CompositionContext,
     ) -> Result<Arc<Self::Output>, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let (blob_service, directory_service) = futures::join!(
-            context.resolve::<dyn BlobService>(&self.params.blob_service),
+        let (blob_store, chunk_store, directory_service) = futures::join!(
+            context.resolve::<dyn BlobStore>(&self.params.blob_store),
+            context.resolve::<dyn ChunkStore>(&self.params.chunk_store),
             context.resolve::<dyn DirectoryService>(&self.params.directory_service)
         );
         let svc = NixHTTPPathInfoService::try_build(
             instance_name.to_string(),
             self.to_owned(),
-            blob_service?,
+            blob_store?,
+            chunk_store?,
             directory_service?,
         )?;
         Ok(Arc::new(svc))
@@ -520,7 +572,8 @@ mod tests {
         NixHTTPPathInfoServiceConfig {
             base_url: "https://cache.nixos.org".try_into().unwrap(),
             params: NixHTTPPathInfoServiceParams {
-                blob_service: "&root".to_string(),
+                blob_store: "&root".to_string(),
+                chunk_store: "&root".to_string(),
                 directory_service: "&root".to_string(),
                 trusted_public_keys: vec![],
                 force_download_nar: false,
@@ -532,7 +585,8 @@ mod tests {
         NixHTTPPathInfoServiceConfig {
             base_url: "http://cache.nixos.org".try_into().unwrap(),
             params: NixHTTPPathInfoServiceParams {
-                blob_service: "&root".to_string(),
+                blob_store: "&root".to_string(),
+                chunk_store: "&root".to_string(),
                 directory_service: "&root".to_string(),
                 trusted_public_keys: vec![],
                 force_download_nar: false,
@@ -544,7 +598,8 @@ mod tests {
         NixHTTPPathInfoServiceConfig {
             base_url: "http://192.0.2.1/foo".try_into().unwrap(),
             params: NixHTTPPathInfoServiceParams {
-                blob_service: "&root".to_string(),
+                blob_store: "&root".to_string(),
+                chunk_store: "&root".to_string(),
                 directory_service: "&root".to_string(),
                 trusted_public_keys: vec![],
                 force_download_nar: false,
@@ -556,7 +611,8 @@ mod tests {
         NixHTTPPathInfoServiceConfig {
             base_url: "http://[::1]:8080/foo".try_into().unwrap(),
             params: NixHTTPPathInfoServiceParams {
-                blob_service: "&root".to_string(),
+                blob_store: "&root".to_string(),
+                chunk_store: "&root".to_string(),
                 directory_service: "&root".to_string(),
                 trusted_public_keys: vec![],
                 force_download_nar: false,
@@ -570,7 +626,8 @@ mod tests {
         NixHTTPPathInfoServiceConfig {
             base_url: "https://cache.nixos.org".try_into().unwrap(),
             params: NixHTTPPathInfoServiceParams {
-                blob_service: "&root".to_string(),
+                blob_store: "&root".to_string(),
+                chunk_store: "&root".to_string(),
                 directory_service: "&root".to_string(),
                 trusted_public_keys: vec![
                     "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=".to_string()
@@ -585,7 +642,8 @@ mod tests {
         NixHTTPPathInfoServiceConfig {
             base_url: "https://cache.nixos.org".try_into().unwrap(),
             params: NixHTTPPathInfoServiceParams {
-                blob_service: "&root".to_string(),
+                blob_store: "&root".to_string(),
+                chunk_store: "&root".to_string(),
                 directory_service: "&root".to_string(),
                 trusted_public_keys: vec![
                     "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=".to_string(),

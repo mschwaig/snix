@@ -23,7 +23,13 @@ in
     package = depot.snix.cli.store.with-features-xp-store-composition-cli;
 
     settings = {
-      blobservices.root = {
+      blob_stores.root = {
+        type = "objectstore";
+        object_store_url = "file:///tank/snix-castore/blobs.object_store";
+        object_store_options = { };
+      };
+
+      chunk_stores.root = {
         type = "objectstore";
         object_store_url = "file:///tank/snix-castore/blobs.object_store";
         object_store_options = { };
@@ -49,7 +55,8 @@ in
         "cache-nixos-org" = {
           type = "nix";
           base_url = "https://cache.nixos.org";
-          blob_service = "&root";
+          blob_store = "&root";
+          chunk_store = "&root";
           directory_service = "&root";
           trusted_public_keys = [
             "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
@@ -60,7 +67,7 @@ in
   };
   systemd.services.snix-store-daemon = {
     environment.TRACER = "otlp";
-    # Ensure /tank is mounted, which is where we the blobservice reads from.
+    # Ensure /tank is mounted, which is where {Blob,Chunk}Store reads from.
     unitConfig.RequiresMountsFor = "/tank";
 
     # twice the normal allowed limit, same as nix-daemon
@@ -72,7 +79,11 @@ in
     package = depot.snix.cli.nar-bridge.with-features-xp-store-composition-cli;
 
     settings = {
-      blobservices.root = {
+      blob_stores.root = {
+        type = "grpc";
+        url = "grpc+unix:/run/snix-store-daemon.sock";
+      };
+      chunk_stores.root = {
         type = "grpc";
         url = "grpc+unix:/run/snix-store-daemon.sock";
       };

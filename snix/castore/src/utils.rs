@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use url::Url;
 
-use crate::blobservice::BlobService;
+use crate::blob_engine::{self, BlobEngine};
+use crate::blobstore::BlobStore;
+use crate::chunkstore::ChunkStore;
 use crate::composition::{
     Composition, DeserializeWithRegistry, REG, ServiceBuilder, with_registry,
 };
@@ -10,8 +12,10 @@ use crate::directoryservice::DirectoryService;
 
 #[derive(serde::Deserialize, Default)]
 pub struct CompositionConfigs {
-    pub blobservices:
-        HashMap<String, DeserializeWithRegistry<Box<dyn ServiceBuilder<Output = dyn BlobService>>>>,
+    pub blob_stores:
+        HashMap<String, DeserializeWithRegistry<Box<dyn ServiceBuilder<Output = dyn BlobStore>>>>,
+    pub chunk_stores:
+        HashMap<String, DeserializeWithRegistry<Box<dyn ServiceBuilder<Output = dyn ChunkStore>>>>,
     pub directoryservices: HashMap<
         String,
         DeserializeWithRegistry<Box<dyn ServiceBuilder<Output = dyn DirectoryService>>>,
@@ -30,7 +34,14 @@ pub struct ServiceUrls {
         env,
         default_value = "objectstore+file:/var/lib/snix-castore/blobs"
     )]
-    pub blob_service_addr: String,
+    pub blob_store_addr: String,
+
+    #[arg(
+        long,
+        env,
+        default_value = "objectstore+file:/var/lib/snix-castore/blobs"
+    )]
+    pub chunk_store_addr: String,
 
     #[arg(
         long,
@@ -55,7 +66,10 @@ pub struct ServiceUrls {
 #[group(id = "CastoreServiceUrlsGrpc")]
 pub struct ServiceUrlsGrpc {
     #[arg(long, env, default_value = "grpc+http://[::1]:8000")]
-    blob_service_addr: String,
+    blob_store_addr: String,
+
+    #[arg(long, env, default_value = "grpc+http://[::1]:8000")]
+    chunk_store_addr: String,
 
     #[arg(long, env, default_value = "grpc+http://[::1]:8000")]
     directory_service_addr: String,
@@ -76,7 +90,10 @@ pub struct ServiceUrlsGrpc {
 #[group(id = "CastoreServiceUrlsMemory")]
 pub struct ServiceUrlsMemory {
     #[arg(long, env, default_value = "memory:")]
-    blob_service_addr: String,
+    blob_store_addr: String,
+
+    #[arg(long, env, default_value = "memory:")]
+    chunk_store_addr: String,
 
     #[arg(long, env, default_value = "redb+memory:")]
     directory_service_addr: String,
@@ -87,23 +104,41 @@ pub struct ServiceUrlsMemory {
 }
 
 impl From<ServiceUrlsGrpc> for ServiceUrls {
-    fn from(urls: ServiceUrlsGrpc) -> ServiceUrls {
-        ServiceUrls {
-            blob_service_addr: urls.blob_service_addr,
-            directory_service_addr: urls.directory_service_addr,
+    fn from(
+        ServiceUrlsGrpc {
+            blob_store_addr,
+            chunk_store_addr,
+            directory_service_addr,
             #[cfg(feature = "xp-composition-cli")]
-            experimental_store_composition: urls.experimental_store_composition,
+            experimental_store_composition,
+        }: ServiceUrlsGrpc,
+    ) -> ServiceUrls {
+        ServiceUrls {
+            blob_store_addr,
+            chunk_store_addr,
+            directory_service_addr,
+            #[cfg(feature = "xp-composition-cli")]
+            experimental_store_composition,
         }
     }
 }
 
 impl From<ServiceUrlsMemory> for ServiceUrls {
-    fn from(urls: ServiceUrlsMemory) -> ServiceUrls {
-        ServiceUrls {
-            blob_service_addr: urls.blob_service_addr,
-            directory_service_addr: urls.directory_service_addr,
+    fn from(
+        ServiceUrlsMemory {
+            blob_store_addr,
+            chunk_store_addr,
+            directory_service_addr,
             #[cfg(feature = "xp-composition-cli")]
-            experimental_store_composition: urls.experimental_store_composition,
+            experimental_store_composition,
+        }: ServiceUrlsMemory,
+    ) -> ServiceUrls {
+        ServiceUrls {
+            blob_store_addr,
+            chunk_store_addr,
+            directory_service_addr,
+            #[cfg(feature = "xp-composition-cli")]
+            experimental_store_composition,
         }
     }
 }
@@ -125,11 +160,16 @@ pub async fn addrs_to_configs(
 
     let mut configs: CompositionConfigs = Default::default();
 
-    let blob_service_url = Url::parse(&urls.blob_service_addr)?;
+    let blob_store_url = Url::parse(&urls.blob_store_addr)?;
+    let chunk_store_url = Url::parse(&urls.chunk_store_addr)?;
     let directory_service_url = Url::parse(&urls.directory_service_addr)?;
-    configs.blobservices.insert(
+    configs.blob_stores.insert(
         "root".into(),
-        with_registry(&REG, || blob_service_url.try_into())?,
+        with_registry(&REG, || blob_store_url.try_into())?,
+    );
+    configs.chunk_stores.insert(
+        "root".into(),
+        with_registry(&REG, || chunk_store_url.try_into())?,
     );
     configs.directoryservices.insert(
         "root".into(),
@@ -142,7 +182,12 @@ pub async fn addrs_to_configs(
 pub async fn construct_services(
     urls: impl Into<ServiceUrls>,
 ) -> Result<
-    (Arc<dyn BlobService>, Arc<dyn DirectoryService>),
+    (
+        Arc<dyn BlobStore>,
+        Arc<dyn ChunkStore>,
+        Arc<dyn BlobEngine>,
+        Arc<dyn DirectoryService>,
+    ),
     Box<dyn std::error::Error + Send + Sync>,
 > {
     let configs = addrs_to_configs(urls).await?;
@@ -153,18 +198,31 @@ pub async fn construct_services(
 pub async fn construct_services_from_configs(
     configs: CompositionConfigs,
 ) -> Result<
-    (Arc<dyn BlobService>, Arc<dyn DirectoryService>),
+    (
+        Arc<dyn BlobStore>,
+        Arc<dyn ChunkStore>,
+        Arc<dyn BlobEngine>,
+        Arc<dyn DirectoryService>,
+    ),
     Box<dyn std::error::Error + Send + Sync>,
 > {
     let mut comp = Composition::new(&REG);
 
-    comp.extend(configs.blobservices);
+    comp.extend(configs.blob_stores);
+    comp.extend(configs.chunk_stores);
     comp.extend(configs.directoryservices);
 
-    let blob_service: Arc<dyn BlobService> = comp.build("root").await?;
+    let blob_store: Arc<dyn BlobStore> = comp.build("root").await?;
+    let chunk_store: Arc<dyn ChunkStore> = comp.build("root").await?;
+    let blob_engine: Arc<dyn BlobEngine> = Arc::new(
+        blob_engine::ChunkingBlobEngine::builder()
+            .blob_store(blob_store.clone())
+            .chunk_store(chunk_store.clone())
+            .build(),
+    );
     let directory_service: Arc<dyn DirectoryService> = comp.build("root").await?;
 
-    Ok((blob_service, directory_service))
+    Ok((blob_store, chunk_store, blob_engine, directory_service))
 }
 
 /// Returns a new [DirectoryService]. Should only be used for tests.
@@ -174,6 +232,8 @@ pub fn gen_test_directory_service() -> impl DirectoryService + Clone {
 }
 
 /// Returns a new [BlobService]. Should only be used for tests.
+///
+/// [BlobService]: crate::blobservice::BlobService
 #[cfg(any(test, feature = "mocks"))]
 pub fn gen_test_blob_service() -> impl crate::blobservice::BlobService + Clone {
     crate::blobservice::MemoryBlobService::new_mock()
@@ -181,16 +241,25 @@ pub fn gen_test_blob_service() -> impl crate::blobservice::BlobService + Clone {
 
 /// Returns a new [BlobEngine]. Should only be used for tests.
 ///
+/// We wrap the underlying stores into Arc to match the signature of
+/// [construct_services_from_configs], so the downcast in SnixStoreFs works.
+///
 /// [BlobEngine]: crate::blob_engine::BlobEngine
+/// [construct_services_from_configs]: snix_castore::utils::construct_services_from_configs]
 #[cfg(any(test, feature = "mocks"))]
-pub fn gen_test_blob_engine() -> impl crate::blob_engine::BlobEngine + Clone {
+pub fn gen_test_blob_engine()
+-> Arc<crate::blob_engine::ChunkingBlobEngine<Arc<dyn BlobStore>, Arc<dyn ChunkStore>>> {
     use crate::{
         blob_engine::ChunkingBlobEngine, blobstore::memory::MemoryBlobStore,
         chunkstore::memory::MemoryChunkStore,
     };
+
+    let blob_store = Arc::new(MemoryBlobStore::default()) as Arc<dyn BlobStore>;
+    let chunk_store = Arc::new(MemoryChunkStore::default()) as Arc<dyn ChunkStore>;
+
     let blob_engine = ChunkingBlobEngine::builder()
-        .blob_store(MemoryBlobStore::default())
-        .chunk_store(MemoryChunkStore::default())
+        .blob_store(blob_store)
+        .chunk_store(chunk_store)
         // very small on purpose here, for tests.
         .avg_chunk_size(512)
         .build();

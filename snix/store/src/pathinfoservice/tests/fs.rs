@@ -1,6 +1,9 @@
 //! Contains a testcase for castore/fs, using a PathInfoService as RootNodesProvider.
 
+use std::sync::Arc;
+
 use snix_castore::{
+    blob_engine::BlobEngine,
     fs::{FSSettings, SnixStoreFs, fuse::FuseDaemon},
     utils::{gen_test_blob_engine, gen_test_directory_service},
 };
@@ -20,7 +23,7 @@ fn list_async_pathinfoservice() {
     }
 
     // Construct blob and directory services
-    let blob_engine = gen_test_blob_engine();
+    let blob_engine = gen_test_blob_engine() as Arc<dyn BlobEngine>;
     let directory_service = gen_test_directory_service();
 
     // Manually start a tokio runtime, we want most of this test to not be in
@@ -56,7 +59,7 @@ fn list_async_pathinfoservice() {
             .expect("PathInfoService to be created")
     };
 
-    let fs = SnixStoreFs::new(
+    let fs: SnixStoreFs<dyn BlobEngine, _, _> = SnixStoreFs::new(
         blob_engine,
         directory_service,
         RootNodesWrapper::from(path_info_service),

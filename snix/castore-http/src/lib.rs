@@ -22,6 +22,7 @@ use axum_range::{KnownSize, Ranged};
 use path_clean::PathClean;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
+use std::sync::Arc;
 use tokio_util::io::ReaderStream;
 use tracing::{debug, error, instrument, warn};
 
@@ -35,8 +36,8 @@ use tracing::{debug, error, instrument, warn};
 /// Uses the passed [BlobEngine] and [DirectoryService]
 #[allow(clippy::too_many_arguments)]
 #[instrument(level = "trace", skip_all, fields(base_path, requested_path), err)]
-pub async fn get_root_node_contents<BE: BlobEngine, DS: DirectoryService, S: AsRef<str>>(
-    blob_engine: BE,
+pub async fn get_root_node_contents<DS, S>(
+    blob_engine: Arc<dyn BlobEngine>,
     directory_service: DS,
     base_path: &path::Path,
     root_node: &Node,
@@ -44,7 +45,11 @@ pub async fn get_root_node_contents<BE: BlobEngine, DS: DirectoryService, S: AsR
     range_header: Option<TypedHeader<Range>>,
     index_names: &[S],
     auto_index: bool,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, StatusCode>
+where
+    DS: DirectoryService,
+    S: AsRef<str>,
+{
     match root_node {
         Node::Directory { .. } => {
             let requested_node = descend_to(&directory_service, root_node.clone(), requested_path)
@@ -221,7 +226,7 @@ pub async fn respond_directory_list(
 
 #[instrument(level = "trace", skip_all, fields(digest, size))]
 pub async fn respond_file(
-    blob_engine: impl BlobEngine,
+    blob_engine: Arc<dyn BlobEngine>,
     extension: Option<&str>,
     range_header: Option<TypedHeader<Range>>,
     digest: &B3Digest,

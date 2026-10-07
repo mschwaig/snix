@@ -260,7 +260,7 @@ where
 }
 
 /// Limited reads from a blob (starting from offset, up to size)
-pub trait ExactBlobReader {
+pub trait LimitBlobReader {
     /// Copies up to `size` bytes starting from `offset` into the passed writer.
     ///
     /// The (sync) writer is assumed to be sufficiently non-blocking,
@@ -275,7 +275,7 @@ pub trait ExactBlobReader {
     ) -> impl std::future::Future<Output = io::Result<u64>>;
 }
 
-impl<CS> ExactBlobReader for BlobReader<CS>
+impl<CS> LimitBlobReader for BlobReader<CS>
 where
     CS: ChunkStore + Clone + 'static,
 {

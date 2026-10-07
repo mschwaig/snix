@@ -1,5 +1,4 @@
 use pretty_assertions::{assert_eq, assert_ne};
-use snix_castore::blob_engine::BlobServiceEngine;
 use snix_eval::builtins::impure_builtins;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -59,17 +58,21 @@ fn build_eval(
     tokio::runtime::Runtime,
 ) {
     let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
-    let (blob_service, directory_service, path_info_service, nar_calculation_service) =
-        tokio_runtime
-            .block_on(async {
-                construct_services(ServiceUrlsMemory::parse_from(std::iter::empty::<&str>())).await
-            })
-            .unwrap();
-
-    let blob_engine = BlobServiceEngine(blob_service);
+    let (
+        _blob_store,
+        _chunk_store,
+        blob_engine,
+        directory_service,
+        path_info_service,
+        nar_calculation_service,
+    ) = tokio_runtime
+        .block_on(async {
+            construct_services(ServiceUrlsMemory::parse_from(std::iter::empty::<&str>())).await
+        })
+        .unwrap();
 
     let snix_store_io = Rc::new(SnixStoreIO::new(
-        Arc::new(blob_engine),
+        blob_engine,
         directory_service,
         path_info_service,
         nar_calculation_service,

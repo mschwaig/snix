@@ -6,7 +6,6 @@ use futures::TryStreamExt;
 use nix_compat::nixhash::{CAHash, NixHash};
 use nix_compat::store_path;
 use nix_compat::wire::de::Error;
-use snix_castore::blob_engine::BlobServiceEngine;
 use snix_castore::directoryservice;
 use snix_castore::import::fs::ingest_path;
 use snix_cli::shutdown_signal;
@@ -15,6 +14,7 @@ use snix_cli_store::upload_closure;
 use snix_cli_store::upload_closure::upload_closure;
 use snix_store::decompression::DecompressedReader;
 use snix_store::nar::NarCalculationService;
+use snix_store::pathinfoservice::{self, PathInfo, PathInfoService};
 use snix_store::utils::ServiceUrls;
 use std::path::PathBuf;
 use tokio::io::AsyncBufReadExt;
@@ -23,14 +23,6 @@ use tokio_stream::wrappers::LinesStream;
 use tonic::transport::Server;
 use tracing::{Instrument, Span, debug, info, info_span, warn};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
-
-use snix_castore::proto::GRPCBlobServiceWrapper;
-use snix_castore::proto::GRPCDirectoryServiceWrapper;
-use snix_castore::proto::blob_service_server::BlobServiceServer;
-use snix_castore::proto::directory_service_server::DirectoryServiceServer;
-use snix_store::pathinfoservice::{self, PathInfo, PathInfoService};
-use snix_store::proto::GRPCPathInfoServiceWrapper;
-use snix_store::proto::path_info_service_server::PathInfoServiceServer;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -273,9 +265,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             listen_args,
             service_addrs,
         } => {
+            use snix_castore::proto::{
+                GRPCBlobStoreWrapper, GRPCChunkStoreWrapper, GRPCDirectoryServiceWrapper,
+                blob_store_service_server::BlobStoreServiceServer,
+                chunk_store_service_server::ChunkStoreServiceServer,
+                directory_service_server::DirectoryServiceServer,
+            };
+            use snix_store::proto::{
+                GRPCPathInfoServiceWrapper, path_info_service_server::PathInfoServiceServer,
+            };
+
             // initialize stores
-            let (blob_service, directory_service, path_info_service, nar_calculation_service) =
-                snix_store::utils::construct_services(service_addrs).await?;
+            let (
+                blob_store,
+                chunk_store,
+                _blob_engine,
+                directory_service,
+                path_info_service,
+                nar_calculation_service,
+            ) = snix_store::utils::construct_services(service_addrs).await?;
 
             #[cfg_attr(feature = "otlp", allow(unused_mut))]
             let mut server = Server::builder();
@@ -298,8 +306,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             #[allow(unused_mut)]
             let mut router = server
                 .add_service(health_service)
-                .add_service(BlobServiceServer::new(GRPCBlobServiceWrapper::new(
-                    blob_service,
+                .add_service(BlobStoreServiceServer::new(GRPCBlobStoreWrapper::new(
+                    blob_store,
+                )))
+                .add_service(ChunkStoreServiceServer::new(GRPCChunkStoreWrapper::new(
+                    chunk_store,
                 )))
                 .add_service(
                     DirectoryServiceServer::new(GRPCDirectoryServiceWrapper::new(
@@ -351,8 +362,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             service_addrs,
         } => {
             // FUTUREWORK: allow flat for single files?
-            let (blob_service, directory_service, path_info_service, nar_calculation_service) =
-                snix_store::utils::construct_services(service_addrs).await?;
+            let (
+                _blob_store,
+                _chunk_store,
+                blob_engine,
+                directory_service,
+                path_info_service,
+                nar_calculation_service,
+            ) = snix_store::utils::construct_services(service_addrs).await?;
 
             // For each path passed, construct the name, or bail out if it's invalid.
             let paths_and_names = paths
@@ -378,7 +395,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
             futures::stream::iter(paths_and_names)
                 .map(|(path, name)| {
-                    let blob_service = blob_service.clone();
+                    let blob_engine = blob_engine.clone();
                     let directory_service = directory_service.clone();
                     let path_info_service = path_info_service.clone();
                     let nar_calculation_service = nar_calculation_service.clone();
@@ -391,7 +408,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
                         // Ingest the contents at the given path into castore.
                         let root_node = ingest_path::<_, _, _, &[u8]>(
-                            BlobServiceEngine(blob_service),
+                            blob_engine,
                             directory_service,
                             &path,
                             None,
@@ -463,13 +480,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             ref format,
             concurrency,
         } => {
-            let (blob_service, directory_service) =
+            let (_blob_store, _chunk_store, blob_engine, directory_service) =
                 snix_castore::utils::construct_services(service_addrs).await?;
 
             // Ingest each NAR concurrently, producing the formatted output line.
             let mut imports = futures::stream::iter(paths)
                 .map(|path| {
-                    let blob_service = BlobServiceEngine(blob_service.clone());
+                    let blob_engine = blob_engine.clone();
                     let directory_service = &directory_service;
                     async move {
                         let reader = snix_cli::reader_for_path(path).await?;
@@ -478,11 +495,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         let mut reader = DecompressedReader::new(reader).await?;
 
                         let root_node = if let Some(reader) = reader.as_unknown_inner() {
-                            snix_store::nar::ingest_nar(blob_service, directory_service, reader)
+                            snix_store::nar::ingest_nar(blob_engine, directory_service, reader)
                                 .await?
                         } else {
                             snix_store::nar::ingest_nar(
-                                blob_service,
+                                blob_engine,
                                 directory_service,
                                 &mut tokio::io::BufReader::new(reader),
                             )
@@ -523,10 +540,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             service_addrs,
             source,
         } => {
-            let (blob_service, directory_service, path_info_service, _nar_calculation_service) =
-                snix_store::utils::construct_services(service_addrs).await?;
-
-            let blob_engine = BlobServiceEngine(blob_service);
+            let (
+                _blob_store,
+                _chunk_store,
+                blob_engine,
+                directory_service,
+                path_info_service,
+                _nar_calculation_service,
+            ) = snix_store::utils::construct_services(service_addrs).await?;
 
             match source {
                 UploadSource::ReferenceGraph {
@@ -604,13 +625,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             allow_other,
             show_xattr,
         } => {
-            let (blob_service, directory_service, path_info_service, _nar_calculation_service) =
-                snix_store::utils::construct_services(service_addrs).await?;
+            let (
+                _blob_store,
+                _chunk_store,
+                blob_engine,
+                directory_service,
+                path_info_service,
+                _nar_calculation_service,
+            ) = snix_store::utils::construct_services(service_addrs).await?;
 
-            use snix_castore::fs::{FSSettings, SnixStoreFs, fuse::FuseDaemon};
+            use snix_castore::{
+                blob_engine::BlobEngine,
+                fs::{FSSettings, SnixStoreFs, fuse::FuseDaemon},
+            };
 
-            let fs = SnixStoreFs::new(
-                BlobServiceEngine(blob_service),
+            let fs: SnixStoreFs<dyn BlobEngine, _, _> = SnixStoreFs::new(
+                blob_engine,
                 directory_service,
                 pathinfoservice::RootNodesWrapper::from(path_info_service),
                 FSSettings {
@@ -651,13 +681,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             uid_gid,
             show_xattr,
         } => {
-            let (blob_service, directory_service, path_info_service, _nar_calculation_service) =
-                snix_store::utils::construct_services(service_addrs).await?;
+            let (
+                _blob_store,
+                _chunk_store,
+                blob_engine,
+                directory_service,
+                path_info_service,
+                _nar_calculation_service,
+            ) = snix_store::utils::construct_services(service_addrs).await?;
 
-            use snix_castore::fs::{FSSettings, SnixStoreFs, virtiofs::start_virtiofs_daemon};
+            use snix_castore::{
+                blob_engine::BlobEngine,
+                fs::{FSSettings, SnixStoreFs, virtiofs::start_virtiofs_daemon},
+            };
 
-            let fs = SnixStoreFs::new(
-                BlobServiceEngine(blob_service),
+            let fs: SnixStoreFs<dyn BlobEngine, _, _> = SnixStoreFs::new(
+                blob_engine,
                 directory_service,
                 pathinfoservice::RootNodesWrapper::from(path_info_service),
                 FSSettings {

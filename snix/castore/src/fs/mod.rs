@@ -16,7 +16,11 @@ use self::{
     inodes::{DirectoryInodeData, InodeData},
 };
 use crate::{
-    B3Digest, Node, blob_engine::BlobEngine, blobservice, directoryservice::DirectoryService,
+    B3Digest, Node,
+    blob_engine::BlobEngine,
+    blobstore::{self, LimitBlobReader},
+    chunkstore::ChunkStore,
+    directoryservice::DirectoryService,
     path::PathComponent,
 };
 use bstr::ByteVec;
@@ -29,17 +33,17 @@ use fuse_backend_rs::{
 };
 use futures::{StreamExt, stream::BoxStream};
 use parking_lot::RwLock;
+use std::ffi::CStr;
 use std::sync::Mutex;
 use std::{
+    any::Any,
     collections::HashMap,
     io,
     sync::atomic::AtomicU64,
     sync::{Arc, atomic::Ordering},
     time::Duration,
 };
-use std::{ffi::CStr, io::Cursor};
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
-use tracing::{Span, debug, error, instrument, warn};
+use tracing::{Span, debug, instrument, warn};
 
 /// This implements a read-only [FileSystem] for a snix-castore
 /// with the passed [BlobEngine], [DirectoryService] and [RootNodes].
@@ -73,7 +77,7 @@ use tracing::{Span, debug, error, instrument, warn};
 /// allocation", aka reserve Directory.size inodes for each directory node we
 /// explore.
 /// Tests for this live in the snix-store crate.
-pub struct SnixStoreFs<BE, DS, RN: RootNodes> {
+pub struct SnixStoreFs<BE: ?Sized, DS, RN: RootNodes> {
     blob_engine: Arc<BE>,
     directory_service: DS,
     root_nodes_provider: Arc<RN>,
@@ -105,9 +109,10 @@ pub struct SnixStoreFs<BE, DS, RN: RootNodes> {
     next_dir_handle: AtomicU64,
 
     /// This holds all open file handles.
-    /// For each open file handle we store the span this relates to and a [blobservice::BlobReader].
+    /// For each open file handle we store the span this relates to and a [blobstore::BlobReader].
     #[allow(clippy::type_complexity)]
-    file_handles: RwLock<HashMap<u64, (Span, Arc<Mutex<Box<dyn blobservice::BlobReader>>>)>>,
+    file_handles:
+        RwLock<HashMap<u64, (Span, Arc<Mutex<blobstore::BlobReader<Arc<dyn ChunkStore>>>>)>>,
 
     next_file_handle: AtomicU64,
 
@@ -127,7 +132,7 @@ pub struct FSSettings {
     pub show_xattr: bool,
 }
 
-impl<BE, DS, RN> SnixStoreFs<BE, DS, RN>
+impl<BE: ?Sized, DS, RN> SnixStoreFs<BE, DS, RN>
 where
     BE: BlobEngine,
     DS: DirectoryService,
@@ -373,7 +378,7 @@ where
     }
 }
 
-impl<BE, DS, RN> FileSystem for SnixStoreFs<BE, DS, RN>
+impl<BE: ?Sized, DS, RN> FileSystem for SnixStoreFs<BE, DS, RN>
 where
     BE: BlobEngine + 'static,
     DS: DirectoryService,
@@ -759,9 +764,18 @@ where
                     }
                 };
 
+                // downcast blob_reader so we can use [ExactBlobReader].
+                let blob_reader: Box<dyn Any> = blob_reader;
+                let blob_reader = blob_reader
+                    .downcast::<blobstore::BlobReader<Arc<dyn ChunkStore + 'static>>>()
+                    .map_err(|_| {
+                        tracing::error!("unable to downcast to blobstore::BlobReader<Arc<dyn ChunkStore + 'static>>");
+                        io::Error::from_raw_os_error(libc::EIO)
+                    })?;
+
                 self.file_handles
                     .write()
-                    .insert(fh, (Span::current(), Arc::new(Mutex::new(blob_reader))));
+                    .insert(fh, (Span::current(), Arc::new(Mutex::new(*blob_reader))));
 
                 Ok((
                     Some(fh),
@@ -822,34 +836,14 @@ where
             })
             .cloned()?;
 
-        let mut blob_reader = blob_reader
+        let blob_reader = blob_reader
             .lock()
             .map_err(|_| io::Error::other("mutex poisoned"))?;
 
         self.tokio_handle.block_on(async {
-            // seek to the offset specified (noop if we're already there)
-            let pos = blob_reader
-                .seek(io::SeekFrom::Start(offset))
-                .await
-                .map_err(|e| {
-                    warn!("failed to seek to offset {}: {}", offset, e);
-                    io::Error::from_raw_os_error(libc::EIO)
-                })?;
+            let bytes_written = blob_reader.copy_limited(offset, size as u64, w).await?;
 
-            debug_assert_eq!(offset, pos);
-
-            // As written in the fuse docs, read should send exactly the number
-            // of bytes requested except on EOF or error.
-            let mut buf: Vec<u8> = Vec::with_capacity(size as usize);
-
-            // copy things from blob_reader into buf up until size
-            tokio::io::copy(&mut blob_reader.as_mut().take(size as u64), &mut buf).await?;
-
-            let bytes_written = io::copy(&mut Cursor::new(&buf), w)?;
-            if bytes_written != buf.len() as u64 {
-                error!(%bytes_written, "unable to write all of buf to kernel");
-                return Err(io::Error::from_raw_os_error(libc::EIO));
-            }
+            // size is u32
             Ok(bytes_written as usize)
         })
     }

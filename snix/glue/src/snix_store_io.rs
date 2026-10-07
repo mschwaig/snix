@@ -303,7 +303,7 @@ mod tests {
     use bstr::ByteSlice;
     use clap::Parser;
     use snix_build::buildservice::DummyBuildService;
-    use snix_castore::blob_engine::BlobServiceEngine;
+
     use snix_eval::{EvalIO, EvaluationResult};
     use snix_store::utils::{ServiceUrlsMemory, construct_services};
     use tempfile::TempDir;
@@ -316,16 +316,21 @@ mod tests {
     // `derivation` builtin.
     fn eval(str: &str) -> EvaluationResult {
         let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
-        let (blob_service, directory_service, path_info_service, nar_calculation_service) =
-            tokio_runtime
-                .block_on(async {
-                    construct_services(ServiceUrlsMemory::parse_from(std::iter::empty::<&str>()))
-                        .await
-                })
-                .unwrap();
+        let (
+            _blob_store,
+            _chunk_store,
+            blob_engine,
+            directory_service,
+            path_info_service,
+            nar_calculation_service,
+        ) = tokio_runtime
+            .block_on(async {
+                construct_services(ServiceUrlsMemory::parse_from(std::iter::empty::<&str>())).await
+            })
+            .unwrap();
 
         let io = Rc::new(SnixStoreIO::new(
-            Arc::new(BlobServiceEngine(blob_service)),
+            blob_engine,
             directory_service,
             path_info_service,
             nar_calculation_service,

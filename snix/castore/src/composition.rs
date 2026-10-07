@@ -543,7 +543,7 @@ impl Composition {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::blobservice::BlobService;
+    use crate::blobstore::BlobStore;
     use std::sync::Arc;
 
     /// Test that we return a reference to the same instance of MemoryBlobService (via ptr_eq)
@@ -551,30 +551,27 @@ mod test {
     /// test the channels notifying the second consumer when the store has been instantiated.
     #[tokio::test]
     async fn concurrent() {
-        let blob_services_configs_json = serde_json::json!({
+        let blob_stores_configs_json = serde_json::json!({
             "root": {
                 "type": "memory",
             }
         });
 
-        let blob_services_configs =
-            with_registry(&REG, || serde_json::from_value(blob_services_configs_json)).unwrap();
-        let mut blob_service_composition = Composition::new(&REG);
-        blob_service_composition.extend_with_configs::<dyn BlobService>(blob_services_configs);
-        let (blob_service1, blob_service2) = tokio::join!(
-            blob_service_composition.build::<dyn BlobService>("root"),
-            blob_service_composition.build::<dyn BlobService>("root")
+        let blob_stores_configs =
+            with_registry(&REG, || serde_json::from_value(blob_stores_configs_json)).unwrap();
+        let mut comp = Composition::new(&REG);
+        comp.extend_with_configs::<dyn BlobStore>(blob_stores_configs);
+        let (blob_store1, blob_store2) = tokio::join!(
+            comp.build::<dyn BlobStore>("root"),
+            comp.build::<dyn BlobStore>("root")
         );
-        assert!(Arc::ptr_eq(
-            &blob_service1.unwrap(),
-            &blob_service2.unwrap()
-        ));
+        assert!(Arc::ptr_eq(&blob_store1.unwrap(), &blob_store2.unwrap()));
     }
 
     /// Test that we throw the correct error when an instantiation would recurse (deadlock)
     #[tokio::test]
     async fn reject_recursion() {
-        let blob_services_configs_json = serde_json::json!({
+        let blob_stores_configs_json = serde_json::json!({
             "root": {
                 "type": "cache",
                 "near": "&other",
@@ -587,14 +584,11 @@ mod test {
             }
         });
 
-        let blob_services_configs =
-            with_registry(&REG, || serde_json::from_value(blob_services_configs_json)).unwrap();
-        let mut blob_service_composition = Composition::new(&REG);
-        blob_service_composition.extend_with_configs::<dyn BlobService>(blob_services_configs);
-        match blob_service_composition
-            .build::<dyn BlobService>("root")
-            .await
-        {
+        let blob_stores_configs =
+            with_registry(&REG, || serde_json::from_value(blob_stores_configs_json)).unwrap();
+        let mut comp = Composition::new(&REG);
+        comp.extend_with_configs::<dyn BlobStore>(blob_stores_configs);
+        match comp.build::<dyn BlobStore>("root").await {
             Err(CompositionError::Recursion(stack)) => {
                 assert_eq!(stack, vec!["root".to_string(), "other".to_string()])
             }

@@ -79,14 +79,14 @@ where
 
         make_bundle(request, &runtime_spec, bundle_path).context("failed to produce bundle")?;
 
-        let blob_service = self.blob_engine.clone();
+        let blob_engine = self.blob_engine.clone();
         let directory_service = self.directory_service.clone();
         let dest = bundle_path.join("inputs");
         let root_nodes = Box::new(request.inputs.clone());
 
         let fuse_daemon = tokio::task::spawn_blocking(move || {
             let fs = snix_castore::fs::SnixStoreFs::new(
-                blob_service,
+                blob_engine,
                 directory_service,
                 root_nodes,
                 snix_castore::fs::FSSettings {

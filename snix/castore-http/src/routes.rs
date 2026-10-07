@@ -177,7 +177,7 @@ mod tests {
         };
 
         // No index but auto-index is enabled
-        let (server, _blob_service, directory_service) = gen_server::<&str>(root_node, &[], true);
+        let (server, _blob_engine, directory_service) = gen_server::<&str>(root_node, &[], true);
 
         directory_service
             .put(DIRECTORY_COMPLICATED.clone())

@@ -101,9 +101,12 @@ in
 
     locations."/grpc.reflection.v1alpha.ServerReflection" = passToSnixStoreDaemonAll;
     locations."/grpc.reflection.v1.ServerReflection" = passToSnixStoreDaemonAll;
-    locations."/snix.castore.v1.BlobService/Stat" = passToSnixStoreDaemonAll;
-    locations."/snix.castore.v1.BlobService/Read" = passToSnixStoreDaemonAll;
-    locations."/snix.castore.v1.BlobService/Put" = passToSnixStoreDaemonTrusted;
+    locations."/snix.castore.v1.BlobStoreService/GetBlob" = passToSnixStoreDaemonAll;
+    locations."/snix.castore.v1.BlobStoreService/StatBlob" = passToSnixStoreDaemonAll;
+    locations."/snix.castore.v1.BlobStoreService/PutBlob" = passToSnixStoreDaemonTrusted;
+    locations."/snix.castore.v1.ChunkStoreService/StatChunk" = passToSnixStoreDaemonAll;
+    locations."/snix.castore.v1.ChunkStoreService/GetChunk" = passToSnixStoreDaemonAll;
+    locations."/snix.castore.v1.ChunkStoreService/PutChunk" = passToSnixStoreDaemonTrusted;
     locations."/snix.castore.v1.DirectoryService/Get" = passToSnixStoreDaemonAll;
     locations."/snix.castore.v1.DirectoryService/Put" = passToSnixStoreDaemonTrusted;
 

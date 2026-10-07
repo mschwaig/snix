@@ -69,7 +69,7 @@ mod tests {
     use nix_compat::store_path::hash_placeholder;
     use rstest::rstest;
     use snix_build::buildservice::DummyBuildService;
-    use snix_castore::blob_engine::BlobServiceEngine;
+
     use snix_eval::{EvalIO, EvaluationResult};
     use snix_store::utils::{ServiceUrlsMemory, construct_services};
 
@@ -79,14 +79,21 @@ mod tests {
     fn eval(str: &str) -> EvaluationResult {
         // We assemble a complete store in memory.
         let runtime = tokio::runtime::Runtime::new().expect("Failed to build a Tokio runtime");
-        let (blob_service, directory_service, path_info_service, nar_calculation_service) = runtime
+        let (
+            _blob_store,
+            _chunk_store,
+            blob_engine,
+            directory_service,
+            path_info_service,
+            nar_calculation_service,
+        ) = runtime
             .block_on(async {
                 construct_services(ServiceUrlsMemory::parse_from(std::iter::empty::<&str>())).await
             })
             .expect("Failed to construct store services in memory");
 
         let io = Rc::new(SnixStoreIO::new(
-            Arc::new(BlobServiceEngine(blob_service)),
+            blob_engine,
             directory_service,
             path_info_service,
             nar_calculation_service,

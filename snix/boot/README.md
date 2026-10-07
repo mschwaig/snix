@@ -37,7 +37,8 @@ virtiofs` daemon (used by `run-snix-vm`) read these env vars and open the
 services directly:
 
 ```
-export BLOB_SERVICE_ADDR=objectstore+file://$PWD/blobs
+export BLOB_STORE_ADDR=objectstore+file://$PWD/blobs
+export CHUNK_STORE_ADDR=objectstore+file://$PWD/blobs
 export DIRECTORY_SERVICE_ADDR=redb:$PWD/directories.redb
 export PATH_INFO_SERVICE_ADDR=redb:$PWD/pathinfo.redb
 ```

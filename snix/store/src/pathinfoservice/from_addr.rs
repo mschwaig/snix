@@ -25,8 +25,12 @@ use url::Url;
 /// - `grpc+http://host:port`, `grpc+https://host:port`
 ///   Connects to a (remote) snix-store gRPC service.
 ///
-/// As the [PathInfoService] needs to talk to [snix_castore::blobservice::BlobService] and
-/// [snix_castore::directoryservice::DirectoryService], these also need to be passed in.
+/// As the [PathInfoService] needs to talk to [BlobStore] / [ChunkStore] and
+/// [DirectoryService], these also need to be passed in.
+///
+/// [BlobStore]: [snix_castore::blobstore::BlobStore]
+/// [ChunkStore]: [snix_castore::chunkstore::ChunkStore]
+/// [DirectoryService]: [snix_castore::directoryservice::DirectoryService]
 pub async fn from_addr(
     uri: &str,
     context: Option<&CompositionContext<'_>>,
@@ -55,9 +59,13 @@ mod tests {
     use super::from_addr;
     use crate::composition::REG;
     use rstest::rstest;
-    use snix_castore::blobservice::{BlobService, MemoryBlobServiceConfig};
-    use snix_castore::composition::{Composition, DeserializeWithRegistry, ServiceBuilder};
-    use snix_castore::directoryservice::DirectoryService;
+    use snix_castore::{
+        blobstore::{BlobStore, memory::MemoryBlobStoreConfig},
+        chunkstore::{ChunkStore, memory::MemoryChunkStoreConfig},
+        composition::{Composition, DeserializeWithRegistry, ServiceBuilder},
+        directoryservice::DirectoryService,
+    };
+
     use std::sync::LazyLock;
     use tempfile::TempDir;
 
@@ -131,8 +139,13 @@ mod tests {
         let mut comp = Composition::new(&REG);
         comp.extend(vec![(
             "root".into(),
-            DeserializeWithRegistry(Box::new(MemoryBlobServiceConfig {})
-                as Box<dyn ServiceBuilder<Output = dyn BlobService>>),
+            DeserializeWithRegistry(Box::new(MemoryBlobStoreConfig {})
+                as Box<dyn ServiceBuilder<Output = dyn BlobStore>>),
+        )]);
+        comp.extend(vec![(
+            "root".into(),
+            DeserializeWithRegistry(Box::new(MemoryChunkStoreConfig {})
+                as Box<dyn ServiceBuilder<Output = dyn ChunkStore>>),
         )]);
         comp.extend(vec![(
             "root".into(),
