@@ -76,7 +76,7 @@ where
         fetch_concurrency: usize,
     ) -> BlobReader<CS> {
         let stream = blob_meta
-            .bytes_stream_for_offset(0, fetch_concurrency, chunk_store.clone())
+            .bytes_stream(0, None, fetch_concurrency, chunk_store.clone())
             .boxed();
 
         Self::ChunkedBlob {
@@ -238,11 +238,7 @@ where
                     *current_chunk = Cursor::new(EMPTY_CHUNK);
                     stream.set(
                         blob_meta
-                            .bytes_stream_for_offset(
-                                new_pos,
-                                *fetch_concurrency,
-                                chunk_store.clone(),
-                            )
+                            .bytes_stream(new_pos, None, *fetch_concurrency, chunk_store.clone())
                             .boxed(),
                     );
                 }

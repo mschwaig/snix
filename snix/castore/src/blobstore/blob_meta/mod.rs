@@ -46,7 +46,8 @@ impl BlobMeta {
     fn chunk_idx_from(&self, offset: u64) -> (usize, u64) {
         assert!(
             offset <= self.blob_len(),
-            "illegal to seek past end of blob"
+            "illegal to seek past end of blob ({offset} in a blob of len {})",
+            self.blob_len()
         );
 
         let partition_point = self.chunk_metas.partition_point(|e| e.end <= offset);
@@ -59,6 +60,17 @@ impl BlobMeta {
         };
 
         (partition_point, offset - start_offset)
+    }
+
+    /// For a given length into the blob, returns the index of the last chunk holding the requested bytes,
+    /// and how many bytes of that chunk are still in range (`chunk[..size]`)
+    fn chunk_idx_until(&self, size: u64) -> (usize, u64) {
+        if size == 0 {
+            return (0, 0);
+        }
+
+        let (idx, skip) = self.chunk_idx_from(size - 1);
+        (idx, skip + 1)
     }
 }
 
