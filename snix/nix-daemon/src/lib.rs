@@ -222,6 +222,14 @@ impl NixDaemonIO for SnixDaemon {
         );
         Ok(())
     }
+
+    async fn add_indirect_root(&self, path: &str) -> std::io::Result<()> {
+        warn!(
+            "Would create a indirect GC root for {} but snix do not support those yet",
+            &path
+        );
+        Ok(())
+    }
 }
 
 // PathInfo lives in the snix-store crate, but does not depend on nix-compat's wire feature,

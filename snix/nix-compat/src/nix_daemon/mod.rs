@@ -110,6 +110,11 @@ pub trait NixDaemonIO: Sync {
         path: &StorePath,
     ) -> impl std::future::Future<Output = Result<()>> + Send;
 
+    /// Add an indirect root, which is a weak reference to the
+    /// user-facing symlink created by addPermRoot.
+    fn add_indirect_root(&self, path: &str)
+    -> impl std::future::Future<Output = Result<()>> + Send;
+
     fn nar_from_path(
         &self,
         path: &StorePath,
@@ -240,6 +245,10 @@ mod tests {
         }
 
         async fn add_temp_root(&self, _path: &StorePath) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        async fn add_indirect_root(&self, _path: &str) -> std::io::Result<()> {
             Ok(())
         }
     }
