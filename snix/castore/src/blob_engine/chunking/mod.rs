@@ -5,7 +5,7 @@ use crate::{
     B3Digest,
     blob_engine::BlobEngine,
     blobstore::{self, BlobReader, BlobStore, BlobWriter},
-    chunkstore::{self, ChunkStore, memory::MemoryChunkStore},
+    chunkstore::{self, ChunkStore},
 };
 
 mod writer;
@@ -68,10 +68,8 @@ where
                 .await
                 .map_err(Error::Chunkstore)?
         {
-            return Ok(Some(
-                Box::new(BlobReader::<MemoryChunkStore>::from_single_chunk(chunk))
-                    as Box<dyn crate::blobservice::BlobReader>,
-            ));
+            return Ok(Some(Box::new(BlobReader::<CS>::from_single_chunk(chunk))
+                as Box<dyn crate::blobservice::BlobReader>));
         }
         Ok(self
             .blob_store
