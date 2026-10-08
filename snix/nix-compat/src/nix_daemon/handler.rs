@@ -326,6 +326,15 @@ where
                             }
                         }
                     }
+
+                    Operation::AddTempRoot => {
+                        let store_path = self.reader.read_value().await?;
+                        Self::handle(&self.writer, self.io.add_temp_root(&store_path)).await?;
+                        let mut writer = self.writer.lock().await;
+                        writer.write_number(1).await?;
+                        writer.flush().await?;
+                    }
+
                     _ => {
                         return Err(std::io::Error::other(format!(
                             "Operation {operation:?} is not implemented"

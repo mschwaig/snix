@@ -103,6 +103,13 @@ pub trait NixDaemonIO: Sync {
     where
         R: AsyncRead + Send + Unpin;
 
+    /// Add a store path as a temporary root of the garbage collector.
+    /// The root disappears as soon as we exit.
+    fn add_temp_root(
+        &self,
+        path: &StorePath,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+
     fn nar_from_path(
         &self,
         path: &StorePath,
@@ -230,6 +237,10 @@ mod tests {
             Err(std::io::Error::other(
                 "Operation QueryDerivationOutputMap is not implemented",
             ))
+        }
+
+        async fn add_temp_root(&self, _path: &StorePath) -> std::io::Result<()> {
+            Ok(())
         }
     }
 

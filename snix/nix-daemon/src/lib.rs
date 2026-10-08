@@ -214,6 +214,14 @@ impl NixDaemonIO for SnixDaemon {
             "Operation QueryDerivationOutputMap is not implemented",
         ))
     }
+
+    async fn add_temp_root(&self, path: &StorePath) -> std::io::Result<()> {
+        warn!(
+            "Would create a temp GC root for {} but snix do not support those yet",
+            &path
+        );
+        Ok(())
+    }
 }
 
 // PathInfo lives in the snix-store crate, but does not depend on nix-compat's wire feature,
