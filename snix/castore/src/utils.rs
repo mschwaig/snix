@@ -231,14 +231,6 @@ pub fn gen_test_directory_service() -> impl DirectoryService + Clone {
     crate::directoryservice::RedbDirectoryService::new_temporary("test".to_string())
 }
 
-/// Returns a new [BlobService]. Should only be used for tests.
-///
-/// [BlobService]: crate::blobservice::BlobService
-#[cfg(any(test, feature = "mocks"))]
-pub fn gen_test_blob_service() -> impl crate::blobservice::BlobService + Clone {
-    crate::blobservice::MemoryBlobService::new_mock()
-}
-
 /// Returns a new [BlobEngine]. Should only be used for tests.
 ///
 /// We wrap the underlying stores into Arc to match the signature of

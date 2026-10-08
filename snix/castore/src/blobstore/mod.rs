@@ -7,6 +7,9 @@ mod blob_meta;
 mod blob_reader;
 mod blob_writer;
 
+#[cfg(feature = "mocks")]
+mod mock_writer;
+
 pub mod combinators;
 pub mod grpc;
 pub mod memory;
@@ -19,6 +22,9 @@ use crate::{
 pub use blob_meta::BlobMeta;
 pub use blob_reader::{BlobReader, LimitBlobReader};
 pub use blob_writer::BlobWriter;
+
+#[cfg(feature = "mocks")]
+pub use mock_writer::MockWriter;
 
 /// Retrieves and stores [BlobMeta] about Blobs.
 /// Blobs can consist of multiple Chunks.
@@ -62,4 +68,21 @@ pub(crate) fn register_blob_stores(reg: &mut Registry) {
     reg.register::<Box<dyn ServiceBuilder<Output = dyn BlobStore>>, combinators::RaceConfig>(
         "race",
     );
+}
+
+/// A [tokio::io::AsyncWrite] that the user needs to close() afterwards to persist.
+/// On success, it returns the digest of the written blob.
+#[async_trait]
+pub trait Writer: tokio::io::AsyncWrite + Send + Unpin {
+    /// Signal there's no more data to be written, and return the digest of the
+    /// contents written.
+    ///
+    /// Closing an already-closed BlobWriter is a no-op.
+    async fn close(&mut self) -> std::io::Result<crate::B3Digest>;
+}
+
+/// BlobReader is a [tokio::io::AsyncRead] that also allows seeking.
+pub trait Reader:
+    tokio::io::AsyncRead + tokio::io::AsyncSeek + std::any::Any + Send + Unpin
+{
 }

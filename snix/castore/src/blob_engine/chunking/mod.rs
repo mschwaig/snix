@@ -56,7 +56,7 @@ where
         &self,
         digest: &B3Digest,
         size_hint: Option<u64>,
-    ) -> Result<Option<Box<dyn crate::blobservice::BlobReader + 'static>>, super::Error> {
+    ) -> Result<Option<Box<dyn crate::blobstore::Reader + 'static>>, super::Error> {
         // If the size_hint suggests it's smaller than min_size,
         // check chunk_store first before falling back to blob_store.
         // We still need to check there as chunking parameters might have changed.
@@ -69,7 +69,7 @@ where
                 .map_err(Error::Chunkstore)?
         {
             return Ok(Some(Box::new(BlobReader::<CS>::from_single_chunk(chunk))
-                as Box<dyn crate::blobservice::BlobReader>));
+                as Box<dyn crate::blobstore::Reader>));
         }
         Ok(self
             .blob_store
@@ -81,11 +81,11 @@ where
                     blob_meta,
                     self.chunk_store.clone(),
                     self.fetch_concurrency,
-                )) as Box<dyn crate::blobservice::BlobReader>
+                )) as Box<dyn crate::blobstore::Reader>
             }))
     }
 
-    async fn open_write<'a>(&'a self) -> Box<dyn crate::blobservice::BlobWriter + 'a> {
+    async fn open_write<'a>(&'a self) -> Box<dyn crate::blobstore::Writer + 'a> {
         let blob_writer = BlobWriter::new(
             self.chunk_store.clone(),
             self.avg_chunk_size,
@@ -93,7 +93,7 @@ where
         );
 
         Box::new(BlobWriterWrapper::new(blob_writer, &self.blob_store))
-            as Box<dyn crate::blobservice::BlobWriter>
+            as Box<dyn crate::blobstore::Writer>
     }
 }
 

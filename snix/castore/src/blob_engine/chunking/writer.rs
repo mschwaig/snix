@@ -8,7 +8,7 @@ use tracing::Span;
 use crate::{B3Digest, blobstore::BlobStore};
 
 pin_project! {
-/// Wrapper to implementing [crate::blobservice::BlobWriter] for
+/// Wrapper to implementing [crate::blobstore::Writer] for
 /// [crate::blobstore::BlobWriter] (persisting [BlobMeta] in a [BlobStore])
 pub(super) struct BlobWriterWrapper<BS>{
     inner: Option<(crate::blobstore::BlobWriter, BS)>
@@ -66,7 +66,7 @@ where
 }
 
 #[async_trait]
-impl<BS: BlobStore> crate::blobservice::BlobWriter for BlobWriterWrapper<BS> {
+impl<BS: BlobStore> crate::blobstore::Writer for BlobWriterWrapper<BS> {
     #[tracing::instrument(skip_all, err, fields(blob.digest=tracing::field::Empty))]
     async fn close(&mut self) -> std::io::Result<B3Digest> {
         let (writer, blob_store) = self.inner.take().ok_or(std::io::Error::new(

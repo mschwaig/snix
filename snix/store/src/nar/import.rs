@@ -253,15 +253,15 @@ mod test {
     use mockall::predicate;
     use nix_compat::nixhash::{CAHash, NixHash};
     use rstest::*;
-    use snix_castore::Node;
     use snix_castore::blob_engine::MockBlobEngine;
-    use snix_castore::blobservice::TestBlobWriter;
+    use snix_castore::blobstore::MockWriter;
     use snix_castore::directoryservice::{MockDirectoryPutter, MockDirectoryService};
     use snix_castore::fixtures::{
         DIRECTORY_COMPLICATED, DIRECTORY_WITH_KEEP, EMPTY_BLOB_DIGEST, HELLOWORLD_BLOB_CONTENTS,
         HELLOWORLD_BLOB_DIGEST,
     };
     use snix_castore::utils::gen_test_blob_engine;
+    use snix_castore::{Node, blobstore};
 
     #[tokio::test]
     async fn single_symlink() {
@@ -295,7 +295,9 @@ mod test {
         blob_engine
             .expect_open_write()
             .once()
-            .return_once(|| Box::new(TestBlobWriter::new()))
+            .return_once(|| {
+                Box::new(MockWriter::new(*HELLOWORLD_BLOB_DIGEST)) as Box<dyn blobstore::Writer>
+            })
             .in_sequence(&mut seq);
 
         let root_node = ingest_nar(
@@ -329,7 +331,9 @@ mod test {
         blob_engine
             .expect_open_write()
             .once()
-            .return_once(|| Box::new(TestBlobWriter::new()))
+            .return_once(|| {
+                Box::new(MockWriter::new(*EMPTY_BLOB_DIGEST)) as Box<dyn blobstore::Writer>
+            })
             .in_sequence(&mut seq);
         blob_engine
             .expect_has()

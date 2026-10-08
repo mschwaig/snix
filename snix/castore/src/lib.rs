@@ -4,7 +4,6 @@ mod digests;
 mod errors;
 
 pub mod blob_engine;
-pub mod blobservice;
 pub mod blobstore;
 pub mod chunkstore;
 pub mod combinators;

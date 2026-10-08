@@ -9,11 +9,14 @@ use mockall::predicate::eq;
 use snix_castore::Node;
 #[cfg(test)]
 use snix_castore::blob_engine::MockBlobEngine;
+use snix_castore::blobstore::BlobReader;
+use snix_castore::chunkstore::Chunk;
+use snix_castore::chunkstore::memory::MemoryChunkStore;
 use snix_castore::directoryservice::{self, MockDirectoryService};
 use snix_castore::fixtures::{
     DIRECTORY_COMPLICATED, DIRECTORY_WITH_KEEP, HELLOWORLD_BLOB_CONTENTS, HELLOWORLD_BLOB_DIGEST,
 };
-use std::io::{self, Cursor, ErrorKind};
+use std::io::{self, ErrorKind};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 #[rstest::rstest]
@@ -22,7 +25,11 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
     |ds: &mut MockDirectoryService| {ds.expect_get().never(); ds.expect_get_recursive().never();})]
 #[case::helloworld(&*CASTORE_NODE_HELLOWORLD, &NAR_CONTENTS_HELLOWORLD,
     |bs: &mut MockBlobEngine|{bs.expect_open_read().once().with(eq(&*HELLOWORLD_BLOB_DIGEST), eq(Some(HELLOWORLD_BLOB_CONTENTS.len() as u64))).returning(|_,_| {
-        Ok(Some(Box::new(Cursor::new(HELLOWORLD_BLOB_CONTENTS))))
+        Ok(Some(Box::new(
+            BlobReader::<MemoryChunkStore>::from_single_chunk(Chunk::from_static(
+                HELLOWORLD_BLOB_CONTENTS,
+            )),
+        )))
     });},
     |ds: &mut MockDirectoryService| {ds.expect_get().never(); ds.expect_get_recursive().never();})]
 #[case::complicated(&*CASTORE_NODE_COMPLICATED, &NAR_CONTENTS_COMPLICATED,
@@ -84,7 +91,13 @@ async fn detect_too_big() {
             eq(&*HELLOWORLD_BLOB_DIGEST),
             eq(Some(42 /* CASTORE_NODE_TOO_BIG Node::File.size */)),
         )
-        .returning(|_, _| Ok(Some(Box::new(Cursor::new(HELLOWORLD_BLOB_CONTENTS)))));
+        .returning(|_, _| {
+            Ok(Some(Box::new(
+                BlobReader::<MemoryChunkStore>::from_single_chunk(Chunk::from_static(
+                    HELLOWORLD_BLOB_CONTENTS,
+                )),
+            )))
+        });
 
     let mut reader = Reader::new(
         &CASTORE_NODE_TOO_BIG,
@@ -115,7 +128,13 @@ async fn detect_too_small() {
             eq(&*HELLOWORLD_BLOB_DIGEST),
             eq(Some(2 /* CASTORE_NODE_TOO_BIG Node::File.size */)),
         )
-        .returning(|_, _| Ok(Some(Box::new(Cursor::new(HELLOWORLD_BLOB_CONTENTS)))));
+        .returning(|_, _| {
+            Ok(Some(Box::new(
+                BlobReader::<MemoryChunkStore>::from_single_chunk(Chunk::from_static(
+                    HELLOWORLD_BLOB_CONTENTS,
+                )),
+            )))
+        });
 
     let mut reader = Reader::new(
         &CASTORE_NODE_TOO_SMALL,
@@ -167,7 +186,13 @@ async fn seek() {
             eq(&*HELLOWORLD_BLOB_DIGEST),
             eq(Some(HELLOWORLD_BLOB_CONTENTS.len() as u64)),
         )
-        .returning(|_, _| Ok(Some(Box::new(Cursor::new(HELLOWORLD_BLOB_CONTENTS)))));
+        .returning(|_, _| {
+            Ok(Some(Box::new(
+                BlobReader::<MemoryChunkStore>::from_single_chunk(Chunk::from_static(
+                    HELLOWORLD_BLOB_CONTENTS,
+                )),
+            )))
+        });
 
     let mut reader = Reader::new(
         &crate::fixtures::CASTORE_NODE_HELLOWORLD,

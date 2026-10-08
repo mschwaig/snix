@@ -3,13 +3,13 @@
 //!
 //! Store configs are deserialized with serde. The registry provides a stateful mapping from the
 //! `type` tag of an internally tagged enum on the serde side to a Config struct which is
-//! deserialized and then returned as a `Box<dyn ServiceBuilder<Output = dyn BlobService>>`
-//! (the same for DirectoryService instead of BlobService etc).
+//! deserialized and then returned as a `Box<dyn ServiceBuilder<Output = dyn BlobStore>>`
+//! (the same for DirectoryService instead of BlobStore etc).
 //!
-//! ### Example 1.: Implementing a new BlobService
+//! ### Example 1.: Implementing a new BlobStore
 //!
 //! You need a Config struct which implements `DeserializeOwned` and
-//! `ServiceBuilder<Output = dyn BlobService>`.
+//! `ServiceBuilder<Output = dyn BlobStore>`.
 //! Provide the user with a function to call with
 //! their registry. You register your new type as:
 //!
@@ -17,21 +17,21 @@
 //! use std::sync::Arc;
 //!
 //! use snix_castore::composition::*;
-//! use snix_castore::blobservice::BlobService;
+//! use snix_castore::blobstore::BlobStore;
 //!
 //! #[derive(serde::Deserialize)]
-//! struct MyBlobServiceConfig {
+//! struct MyBlobStoreConfig {
 //! }
 //!
 //! #[tonic::async_trait]
-//! impl ServiceBuilder for MyBlobServiceConfig {
-//!     type Output = dyn BlobService;
+//! impl ServiceBuilder for MyBlobStoreConfig {
+//!     type Output = dyn BlobStore;
 //!     async fn build(&self, _: &str, _: &CompositionContext) -> Result<Arc<Self::Output>, Box<dyn std::error::Error + Send + Sync + 'static>> {
 //!         todo!()
 //!     }
 //! }
 //!
-//! impl TryFrom<url::Url> for MyBlobServiceConfig {
+//! impl TryFrom<url::Url> for MyBlobStoreConfig {
 //!     type Error = Box<dyn std::error::Error + Send + Sync>;
 //!     fn try_from(url: url::Url) -> Result<Self, Self::Error> {
 //!         todo!()
@@ -39,23 +39,23 @@
 //! }
 //!
 //! pub fn add_my_service(reg: &mut Registry) {
-//!     reg.register::<Box<dyn ServiceBuilder<Output = dyn BlobService>>, MyBlobServiceConfig>("myblobservicetype");
+//!     reg.register::<Box<dyn ServiceBuilder<Output = dyn BlobStore>>, MyBlobStoreConfig>("myblobstoretype");
 //! }
 //! ```
 //!
-//! Now, when a user deserializes a store config with the type tag "myblobservicetype" into a
-//! `Box<dyn ServiceBuilder<Output = Arc<dyn BlobService>>>`, it will be done via `MyBlobServiceConfig`.
+//! Now, when a user deserializes a store config with the type tag "myblobstoretype" into a
+//! `Box<dyn ServiceBuilder<Output = Arc<dyn BlobStore>>>`, it will be done via `MyBlobStoreConfig`.
 //!
 //! ### Example 2.: Composing stores to get one store
 //!
 //! ```
 //! use std::sync::Arc;
 //! use snix_castore::composition::*;
-//! use snix_castore::blobservice::BlobService;
+//! use snix_castore::blobstore::BlobStore;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! # tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async move {
-//! let blob_services_configs_json = serde_json::json!({
+//! let blob_store_configs_json = serde_json::json!({
 //!   "blobstore1": {
 //!     "type": "memory"
 //!   },
@@ -69,10 +69,10 @@
 //!   }
 //! });
 //!
-//! let blob_services_configs = with_registry(&REG, || serde_json::from_value(blob_services_configs_json))?;
-//! let mut blob_service_composition = Composition::new(&REG);
-//! blob_service_composition.extend_with_configs::<dyn BlobService>(blob_services_configs);
-//! let blob_service: Arc<dyn BlobService> = blob_service_composition.build("root").await?;
+//! let blob_stores_configs = with_registry(&REG, || serde_json::from_value(blob_store_configs_json))?;
+//! let mut blob_store_composition = Composition::new(&REG);
+//! blob_store_composition.extend_with_configs::<dyn BlobStore>(blob_stores_configs);
+//! let blob_store: Arc<dyn BlobStore> = blob_store_composition.build("root").await?;
 //! # Ok(())
 //! # })
 //! # }
@@ -274,7 +274,6 @@ pub static REG: LazyLock<&'static Registry> = LazyLock::new(|| {
 /// This can be used outside to create your own registry with the builtin types
 /// _and_ extra third party types.
 pub fn add_default_services(reg: &mut Registry) {
-    crate::blobservice::register_blob_services(reg);
     crate::chunkstore::register_chunk_stores(reg);
     crate::blobstore::register_blob_stores(reg);
     crate::directoryservice::register_directory_services(reg);
@@ -283,7 +282,7 @@ pub fn add_default_services(reg: &mut Registry) {
 pub struct CompositionContext<'a> {
     // The stack used to detect recursive instantiations and prevent deadlocks
     // The TypeId of the trait object is included to distinguish e.g. the
-    // BlobService "root" and the DirectoryService "root".
+    // BlobStore "root" and the DirectoryService "root".
     stack: Vec<(TypeId, String)>,
     registry: &'static Registry,
     composition: Option<&'a Composition>,
@@ -546,7 +545,7 @@ mod test {
     use crate::blobstore::BlobStore;
     use std::sync::Arc;
 
-    /// Test that we return a reference to the same instance of MemoryBlobService (via ptr_eq)
+    /// Test that we return a reference to the same instance of MemoryBlobStore (via ptr_eq)
     /// when instantiating the same entrypoint twice. By instantiating concurrently, we also
     /// test the channels notifying the second consumer when the store has been instantiated.
     #[tokio::test]

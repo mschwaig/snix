@@ -28,7 +28,7 @@ REPL-based gPRC client.
 You can use it to connect to a `snix-store` and call the various RPC methods.
 
 ```shell
-$ cargo run -- daemon &
+$ cargo run -p snix-cli-store -- daemon &
 $ evans --host localhost --port 8000 -r repl
   ______
  |  ____|
@@ -41,16 +41,17 @@ $ evans --host localhost --port 8000 -r repl
 
 
 localhost:8000> package snix.castore.v1
-snix.castore.v1@localhost:8000> service BlobService
+snix.castore.v1@localhost:8000> service ChunkStoreService
 
-snix.castore.v1.BlobService@localhost:8000> call Put --bytes-from-file
+snix.castore.v1.ChunkStoreService@localhost:8000> call PutChunk --bytes-from-file
 data (TYPE_BYTES) => /run/current-system/system
+data (TYPE_BYTES) => <Ctrl-D>
 {
   "digest": "KOM3/IHEx7YfInAnlJpAElYezq0Sxn9fRz7xuClwNfA="
 }
 
-snix.castore.v1.BlobService@localhost:8000> call Read --bytes-as-base64
-digest (TYPE_BYTES) => KOM3/IHEx7YfInAnlJpAElYezq0Sxn9fRz7xuClwNfA=
+snix.castore.v1.ChunkStoreService@localhost:8000> call Read --bytes-as-base64
+digest (TYPE_BYTES) =>
 {
   "data": "eDg2XzY0LWxpbnV4"
 }
