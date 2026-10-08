@@ -4,9 +4,10 @@ use std::{
 };
 
 use bytes::Buf;
-use futures::{StreamExt, ready, stream::BoxStream};
+use futures::{StreamExt, TryStreamExt, ready, stream::BoxStream};
 use pin_project_lite::pin_project;
 use tokio::io::AsyncBufRead;
+use tracing::{instrument, warn};
 
 use crate::{
     blobstore::BlobMeta,
@@ -255,6 +256,73 @@ where
         _cx: &mut std::task::Context<'_>,
     ) -> Poll<io::Result<u64>> {
         Poll::Ready(Ok(self.position()))
+    }
+}
+
+/// Limited reads from a blob (starting from offset, up to size)
+pub trait ExactBlobReader {
+    /// Copies up to `size` bytes starting from `offset` into the passed writer.
+    ///
+    /// The (sync) writer is assumed to be sufficiently non-blocking,
+    /// so it can still be invoked from an async context.
+    ///
+    /// Returns the number of bytes actually written.
+    fn copy_limited(
+        &self,
+        offset: u64,
+        size: u64,
+        w: &mut dyn std::io::Write,
+    ) -> impl std::future::Future<Output = io::Result<u64>>;
+}
+
+impl<CS> ExactBlobReader for BlobReader<CS>
+where
+    CS: ChunkStore + Clone + 'static,
+{
+    #[instrument(skip_all, fields(blob.len = self.blob_len(), %offset, %size))]
+    fn copy_limited(
+        &self,
+        offset: u64,
+        size: u64,
+        w: &mut dyn std::io::Write,
+    ) -> impl std::future::Future<Output = io::Result<u64>> {
+        async move {
+            if offset >= self.blob_len() {
+                warn!("offset past blob_len");
+                return Ok(0);
+            }
+            match self {
+                BlobReader::SingleChunk { cursor } => {
+                    // We don't want to mutate the AsyncRead[Buf] state, so create our own cursor.
+                    let mut rd = Cursor::new(cursor.get_ref().to_owned());
+                    rd.set_position(offset);
+                    let mut rd = std::io::Read::take(rd, size);
+                    std::io::copy(&mut rd, w)
+                }
+                BlobReader::ChunkedBlob {
+                    blob_meta,
+                    chunk_store,
+                    fetch_concurrency,
+                    ..
+                } => {
+                    // construct a stream for the requested offset and size
+                    let mut stream = blob_meta.bytes_stream(
+                        offset,
+                        Some(size),
+                        *fetch_concurrency,
+                        chunk_store.clone(),
+                    );
+
+                    let mut bytes_written = 0;
+
+                    while let Some(mut cursor) = stream.try_next().await? {
+                        bytes_written += std::io::copy(&mut cursor, w)?;
+                    }
+
+                    Ok(bytes_written)
+                }
+            }
+        }
     }
 }
 
