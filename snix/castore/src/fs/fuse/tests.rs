@@ -9,6 +9,7 @@ use std::{
 };
 use tempfile::TempDir;
 use tokio_stream::{StreamExt, wrappers::ReadDirStream};
+use tracing_test::traced_test;
 
 use super::FuseDaemon;
 use crate::{
@@ -229,6 +230,7 @@ async fn populate_directory_complicated(
 
 /// Ensure mounting itself doesn't fail
 #[tokio::test]
+#[traced_test]
 async fn mount() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -253,6 +255,7 @@ async fn mount() {
 }
 /// Ensure listing the root isn't allowed
 #[tokio::test]
+#[traced_test]
 async fn root() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -282,6 +285,7 @@ async fn root() {
 
 /// Ensure listing the root is allowed if configured explicitly
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[traced_test]
 async fn root_with_listing() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -329,6 +333,7 @@ async fn root_with_listing() {
 
 /// Ensure we can stat a file at the root
 #[tokio::test]
+#[traced_test]
 async fn stat_file_at_root() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -365,6 +370,7 @@ async fn stat_file_at_root() {
 
 /// Ensure we can read a file at the root
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[traced_test]
 async fn read_file_at_root() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -400,6 +406,7 @@ async fn read_file_at_root() {
 }
 
 /// Ensure we can read a large file at the root
+#[traced_test]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn read_large_file_at_root() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
@@ -445,6 +452,7 @@ async fn read_large_file_at_root() {
 
 /// Read the target of a symlink
 #[tokio::test]
+#[traced_test]
 async fn symlink_readlink() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -490,6 +498,7 @@ async fn symlink_readlink() {
 
 /// Read and stat a regular file through a symlink pointing to it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[traced_test]
 async fn read_stat_through_symlink() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -534,6 +543,7 @@ async fn read_stat_through_symlink() {
 }
 
 /// Read a directory in the root, and validate some attributes.
+#[traced_test]
 #[tokio::test]
 async fn read_stat_directory() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
@@ -569,6 +579,7 @@ async fn read_stat_directory() {
 
 /// Ensure uid and gid are overridden if we configure it as such.
 #[tokio::test]
+#[traced_test]
 async fn uid_gid_override() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -610,6 +621,7 @@ async fn uid_gid_override() {
 /// Read a directory and file in the root, and ensure the xattrs expose blob or
 /// directory digests.
 #[tokio::test]
+#[traced_test]
 async fn xattr() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -696,6 +708,7 @@ async fn xattr() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[traced_test]
 /// Read a blob inside a directory. This ensures we successfully populate directory data.
 async fn read_blob_inside_dir() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
@@ -734,6 +747,7 @@ async fn read_blob_inside_dir() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[traced_test]
 /// Read a blob inside a directory inside a directory. This ensures we properly
 /// populate directories as we traverse down the structure.
 async fn read_blob_deep_inside_dir() {
@@ -778,6 +792,7 @@ async fn read_blob_deep_inside_dir() {
 
 /// Ensure readdir works.
 #[tokio::test]
+#[traced_test]
 async fn readdir() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -836,6 +851,7 @@ async fn readdir() {
 }
 
 #[tokio::test]
+#[traced_test]
 /// Do a readdir deeper inside a directory, without doing readdir or stat in the parent directory.
 async fn readdir_deep() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
@@ -883,6 +899,7 @@ async fn readdir_deep() {
 
 /// Check attributes match how they show up in /nix/store normally.
 #[tokio::test]
+#[traced_test]
 async fn check_attributes() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -957,6 +974,7 @@ async fn check_attributes() {
 }
 
 #[tokio::test]
+#[traced_test]
 /// Ensure we allocate the same inodes for the same directory contents.
 /// $DIRECTORY_COMPLICATED_NAME/keep contains the same data as $DIRECTORY_WITH_KEEP.
 async fn compare_inodes_directories() {
@@ -1003,6 +1021,7 @@ async fn compare_inodes_directories() {
 /// Ensure we allocate the same inodes for the same directory contents.
 /// $DIRECTORY_COMPLICATED_NAME/keep/,keep contains the same data as $DIRECTORY_COMPLICATED_NAME/.keep
 #[tokio::test]
+#[traced_test]
 async fn compare_inodes_files() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -1050,6 +1069,7 @@ async fn compare_inodes_files() {
 /// Ensure we allocate the same inode for symlinks pointing to the same targets.
 /// $DIRECTORY_COMPLICATED_NAME/aa points to the same target as SYMLINK_NAME2.
 #[tokio::test]
+#[traced_test]
 async fn compare_inodes_symlinks() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -1093,6 +1113,7 @@ async fn compare_inodes_symlinks() {
 
 /// Check we match paths exactly.
 #[tokio::test]
+#[traced_test]
 async fn read_wrong_paths_in_root() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -1148,6 +1169,7 @@ async fn read_wrong_paths_in_root() {
 
 /// Make sure writes are not allowed
 #[tokio::test]
+#[traced_test]
 async fn disallow_writes() {
     // https://plume.benboeckel.net/~/JustAnotherBlog/skipping-tests-in-rust
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -1178,6 +1200,7 @@ async fn disallow_writes() {
 }
 
 #[tokio::test]
+#[traced_test]
 /// Ensure we get an IO error if the directory service does not have the Directory object.
 async fn missing_directory() {
     if !std::path::Path::new("/dev/fuse").exists() {
@@ -1225,6 +1248,7 @@ async fn missing_directory() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[traced_test]
 /// Ensure we get an IO error if the blob service does not have the blob
 async fn missing_blob() {
     if !std::path::Path::new("/dev/fuse").exists() {
