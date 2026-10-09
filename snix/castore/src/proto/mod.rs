@@ -299,20 +299,3 @@ impl Entry {
         }
     }
 }
-
-impl StatBlobResponse {
-    /// Validates a StatBlobResponse. All chunks must have valid blake3 digests.
-    /// It is allowed to send an empty list, if no more granular chunking is
-    /// available.
-    pub fn validate(&self) -> Result<(), ValidateStatBlobResponseError> {
-        for (i, chunk) in self.chunks.iter().enumerate() {
-            if chunk.digest.len() != blake3::KEY_LEN {
-                return Err(ValidateStatBlobResponseError::InvalidDigestLen(
-                    chunk.digest.len(),
-                    i,
-                ));
-            }
-        }
-        Ok(())
-    }
-}

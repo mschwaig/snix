@@ -38,11 +38,11 @@ const (
 // Blobs are keyed by the BLAKE3 digest of their entire data
 type BlobStoreServiceClient interface {
 	// Stat checks if a [BlobMeta] for a given blob exists.
-	StatBlob(ctx context.Context, in *BSStatBlobRequest, opts ...grpc.CallOption) (*BSStatBlobResponse, error)
+	StatBlob(ctx context.Context, in *StatBlobRequest, opts ...grpc.CallOption) (*StatBlobResponse, error)
 	// Get retrieves a [BlobMeta] for a given blob digest.
 	GetBlob(ctx context.Context, in *GetBlobRequest, opts ...grpc.CallOption) (*GetBlobResponse, error)
 	// Put persists a [BlobMeta] for the given blob digest.
-	PutBlob(ctx context.Context, in *PutBlobRequest, opts ...grpc.CallOption) (*BSPutBlobResponse, error)
+	PutBlob(ctx context.Context, in *PutBlobRequest, opts ...grpc.CallOption) (*PutBlobResponse, error)
 }
 
 type blobStoreServiceClient struct {
@@ -53,9 +53,9 @@ func NewBlobStoreServiceClient(cc grpc.ClientConnInterface) BlobStoreServiceClie
 	return &blobStoreServiceClient{cc}
 }
 
-func (c *blobStoreServiceClient) StatBlob(ctx context.Context, in *BSStatBlobRequest, opts ...grpc.CallOption) (*BSStatBlobResponse, error) {
+func (c *blobStoreServiceClient) StatBlob(ctx context.Context, in *StatBlobRequest, opts ...grpc.CallOption) (*StatBlobResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(BSStatBlobResponse)
+	out := new(StatBlobResponse)
 	err := c.cc.Invoke(ctx, BlobStoreService_StatBlob_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -73,9 +73,9 @@ func (c *blobStoreServiceClient) GetBlob(ctx context.Context, in *GetBlobRequest
 	return out, nil
 }
 
-func (c *blobStoreServiceClient) PutBlob(ctx context.Context, in *PutBlobRequest, opts ...grpc.CallOption) (*BSPutBlobResponse, error) {
+func (c *blobStoreServiceClient) PutBlob(ctx context.Context, in *PutBlobRequest, opts ...grpc.CallOption) (*PutBlobResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(BSPutBlobResponse)
+	out := new(PutBlobResponse)
 	err := c.cc.Invoke(ctx, BlobStoreService_PutBlob_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -94,11 +94,11 @@ func (c *blobStoreServiceClient) PutBlob(ctx context.Context, in *PutBlobRequest
 // Blobs are keyed by the BLAKE3 digest of their entire data
 type BlobStoreServiceServer interface {
 	// Stat checks if a [BlobMeta] for a given blob exists.
-	StatBlob(context.Context, *BSStatBlobRequest) (*BSStatBlobResponse, error)
+	StatBlob(context.Context, *StatBlobRequest) (*StatBlobResponse, error)
 	// Get retrieves a [BlobMeta] for a given blob digest.
 	GetBlob(context.Context, *GetBlobRequest) (*GetBlobResponse, error)
 	// Put persists a [BlobMeta] for the given blob digest.
-	PutBlob(context.Context, *PutBlobRequest) (*BSPutBlobResponse, error)
+	PutBlob(context.Context, *PutBlobRequest) (*PutBlobResponse, error)
 	mustEmbedUnimplementedBlobStoreServiceServer()
 }
 
@@ -109,13 +109,13 @@ type BlobStoreServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedBlobStoreServiceServer struct{}
 
-func (UnimplementedBlobStoreServiceServer) StatBlob(context.Context, *BSStatBlobRequest) (*BSStatBlobResponse, error) {
+func (UnimplementedBlobStoreServiceServer) StatBlob(context.Context, *StatBlobRequest) (*StatBlobResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method StatBlob not implemented")
 }
 func (UnimplementedBlobStoreServiceServer) GetBlob(context.Context, *GetBlobRequest) (*GetBlobResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetBlob not implemented")
 }
-func (UnimplementedBlobStoreServiceServer) PutBlob(context.Context, *PutBlobRequest) (*BSPutBlobResponse, error) {
+func (UnimplementedBlobStoreServiceServer) PutBlob(context.Context, *PutBlobRequest) (*PutBlobResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PutBlob not implemented")
 }
 func (UnimplementedBlobStoreServiceServer) mustEmbedUnimplementedBlobStoreServiceServer() {}
@@ -140,7 +140,7 @@ func RegisterBlobStoreServiceServer(s grpc.ServiceRegistrar, srv BlobStoreServic
 }
 
 func _BlobStoreService_StatBlob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BSStatBlobRequest)
+	in := new(StatBlobRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func _BlobStoreService_StatBlob_Handler(srv interface{}, ctx context.Context, de
 		FullMethod: BlobStoreService_StatBlob_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BlobStoreServiceServer).StatBlob(ctx, req.(*BSStatBlobRequest))
+		return srv.(BlobStoreServiceServer).StatBlob(ctx, req.(*StatBlobRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

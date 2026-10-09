@@ -7,8 +7,6 @@ package snix.castore.v1;
 option go_package = "snix.dev/castore/proto;castorev1";
 
 // Describes more granular chunking information of a blob.
-// More strict than BlobService's [StatBlobResponse],
-// as it mixed request flags.
 message BlobMeta {
   // Contains a list of more granular chunks.
   // An empty list is only allowed if describing the empty blob.

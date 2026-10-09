@@ -27,8 +27,8 @@ where
     #[instrument(skip_all, fields(blob.digest=tracing::field::Empty))]
     async fn stat_blob(
         &self,
-        request: Request<proto::BsStatBlobRequest>,
-    ) -> Result<Response<proto::BsStatBlobResponse>, Status> {
+        request: Request<proto::StatBlobRequest>,
+    ) -> Result<Response<proto::StatBlobResponse>, Status> {
         let digest: B3Digest = request
             .into_inner()
             .digest
@@ -39,7 +39,7 @@ where
         span.record("blob.digest", digest.to_string());
 
         match self.blob_store.has(&digest).await {
-            Ok(true) => Ok(Response::new(proto::BsStatBlobResponse {})),
+            Ok(true) => Ok(Response::new(proto::StatBlobResponse {})),
             Ok(false) => Err(Status::not_found(format!("blob {digest} not found"))),
             Err(err) => {
                 warn!(%err, "failed to check for blob");
@@ -78,7 +78,7 @@ where
     async fn put_blob(
         &self,
         request: Request<proto::PutBlobRequest>,
-    ) -> Result<Response<proto::BsPutBlobResponse>, Status> {
+    ) -> Result<Response<proto::PutBlobResponse>, Status> {
         let proto::PutBlobRequest { digest, blob_meta } = request.into_inner();
 
         let digest: B3Digest = digest
@@ -101,6 +101,6 @@ where
                 Status::internal(err.to_string())
             })?;
 
-        Ok(Response::new(proto::BsPutBlobResponse {}))
+        Ok(Response::new(proto::PutBlobResponse {}))
     }
 }

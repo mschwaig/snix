@@ -25,8 +25,6 @@ const (
 )
 
 // Describes more granular chunking information of a blob.
-// More strict than BlobService's [StatBlobResponse],
-// as it mixed request flags.
 type BlobMeta struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Contains a list of more granular chunks.

@@ -1,9 +1,9 @@
 use crate::{
     B3Digest,
-    proto::{BsStatBlobRequest, GetBlobRequest},
+    proto::{GetBlobRequest, StatBlobRequest},
 };
 
-impl BsStatBlobRequest {
+impl StatBlobRequest {
     pub fn with_digest(digest: B3Digest) -> Self {
         Self {
             digest: digest.into(),

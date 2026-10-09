@@ -9,7 +9,7 @@ use crate::{
     B3Digest,
     blobstore::{BlobMeta, BlobStore},
     composition::{CompositionContext, ServiceBuilder},
-    proto::{self, BsStatBlobRequest, GetBlobRequest, GetBlobResponse, PutBlobRequest},
+    proto::{self, GetBlobRequest, GetBlobResponse, PutBlobRequest, StatBlobRequest},
 };
 
 /// Connects to a (remote) snix-castore BlobStoreService over gRPC.
@@ -77,7 +77,7 @@ where
         match self
             .client
             .clone()
-            .stat_blob(BsStatBlobRequest::with_digest(*digest))
+            .stat_blob(StatBlobRequest::with_digest(*digest))
             .await
         {
             Ok(_) => Ok(true),
