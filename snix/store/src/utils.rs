@@ -41,7 +41,7 @@ pub struct ServiceUrls {
     pub castore_service_addrs: castore_utils::ServiceUrls,
 
     #[arg(long, env, default_value = "redb:/var/lib/snix-store/pathinfo.redb")]
-    pub path_info_service_addr: String,
+    pub path_info_service_addr: Url,
 }
 
 /// Provides a set of clap arguments to configure snix-\[ca\]store services.
@@ -55,7 +55,7 @@ pub struct ServiceUrlsGrpc {
     castore_service_addrs: castore_utils::ServiceUrlsGrpc,
 
     #[arg(long, env, default_value = "grpc+http://[::1]:8000")]
-    path_info_service_addr: String,
+    path_info_service_addr: Url,
 }
 
 /// Provides a set of clap arguments to configure snix-\[ca\]store services.
@@ -72,7 +72,7 @@ pub struct ServiceUrlsMemory {
     castore_service_addrs: castore_utils::ServiceUrlsMemory,
 
     #[arg(long, env, default_value = "redb+memory:")]
-    path_info_service_addr: String,
+    path_info_service_addr: Url,
 }
 
 impl From<ServiceUrlsGrpc> for ServiceUrls {
@@ -104,35 +104,37 @@ pub async fn addrs_to_configs(
         castore_service_addrs,
         path_info_service_addr,
     } = urls.into();
+    let castore_utils::ServiceUrls {
+        blob_store_addr,
+        chunk_store_addr,
+        directory_service_addr,
+        #[cfg(feature = "xp-composition-cli")]
+        experimental_store_composition,
+    } = castore_service_addrs;
 
     #[cfg(feature = "xp-composition-cli")]
-    if let Some(conf_path) = castore_service_addrs.experimental_store_composition {
+    if let Some(conf_path) = experimental_store_composition {
         let conf_text = tokio::fs::read_to_string(conf_path).await?;
         return Ok(with_registry(&REG, || toml::from_str(&conf_text))?);
     }
 
     let mut configs: CompositionConfigs = Default::default();
 
-    let blob_store_url = Url::parse(&castore_service_addrs.blob_store_addr)?;
-    let chunk_store_url = Url::parse(&castore_service_addrs.chunk_store_addr)?;
-    let directory_service_url = Url::parse(&castore_service_addrs.directory_service_addr)?;
-    let path_info_service_url = Url::parse(&path_info_service_addr)?;
-
     configs.blob_stores.insert(
         "root".into(),
-        with_registry(&REG, || blob_store_url.try_into())?,
+        with_registry(&REG, || blob_store_addr.try_into())?,
     );
     configs.chunk_stores.insert(
         "root".into(),
-        with_registry(&REG, || chunk_store_url.try_into())?,
+        with_registry(&REG, || chunk_store_addr.try_into())?,
     );
     configs.directoryservices.insert(
         "root".into(),
-        with_registry(&REG, || directory_service_url.try_into())?,
+        with_registry(&REG, || directory_service_addr.try_into())?,
     );
     configs.pathinfoservices.insert(
         "root".into(),
-        with_registry(&REG, || path_info_service_url.try_into())?,
+        with_registry(&REG, || path_info_service_addr.try_into())?,
     );
 
     Ok(configs)

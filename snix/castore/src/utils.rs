@@ -34,21 +34,21 @@ pub struct ServiceUrls {
         env,
         default_value = "objectstore+file:/var/lib/snix-castore/blobs"
     )]
-    pub blob_store_addr: String,
+    pub blob_store_addr: Url,
 
     #[arg(
         long,
         env,
         default_value = "objectstore+file:/var/lib/snix-castore/blobs"
     )]
-    pub chunk_store_addr: String,
+    pub chunk_store_addr: Url,
 
     #[arg(
         long,
         env,
         default_value = "redb:/var/lib/snix-castore/directories.redb"
     )]
-    pub directory_service_addr: String,
+    pub directory_service_addr: Url,
 
     /// Path to a TOML file describing the way the services should be composed
     /// Experimental because the format is not final.
@@ -66,13 +66,13 @@ pub struct ServiceUrls {
 #[group(id = "CastoreServiceUrlsGrpc")]
 pub struct ServiceUrlsGrpc {
     #[arg(long, env, default_value = "grpc+http://[::1]:8000")]
-    blob_store_addr: String,
+    blob_store_addr: Url,
 
     #[arg(long, env, default_value = "grpc+http://[::1]:8000")]
-    chunk_store_addr: String,
+    chunk_store_addr: Url,
 
     #[arg(long, env, default_value = "grpc+http://[::1]:8000")]
-    directory_service_addr: String,
+    directory_service_addr: Url,
 
     #[cfg(feature = "xp-composition-cli")]
     #[arg(long, env)]
@@ -90,13 +90,13 @@ pub struct ServiceUrlsGrpc {
 #[group(id = "CastoreServiceUrlsMemory")]
 pub struct ServiceUrlsMemory {
     #[arg(long, env, default_value = "memory:")]
-    blob_store_addr: String,
+    blob_store_addr: Url,
 
     #[arg(long, env, default_value = "memory:")]
-    chunk_store_addr: String,
+    chunk_store_addr: Url,
 
     #[arg(long, env, default_value = "redb+memory:")]
-    directory_service_addr: String,
+    directory_service_addr: Url,
 
     #[cfg(feature = "xp-composition-cli")]
     #[arg(long, env)]
@@ -150,30 +150,33 @@ impl From<ServiceUrlsMemory> for ServiceUrls {
 pub async fn addrs_to_configs(
     urls: impl Into<ServiceUrls>,
 ) -> Result<CompositionConfigs, Box<dyn std::error::Error + Send + Sync>> {
-    let urls: ServiceUrls = urls.into();
+    let ServiceUrls {
+        blob_store_addr,
+        chunk_store_addr,
+        directory_service_addr,
+        #[cfg(feature = "xp-composition-cli")]
+        experimental_store_composition,
+    } = urls.into();
 
     #[cfg(feature = "xp-composition-cli")]
-    if let Some(conf_path) = urls.experimental_store_composition {
+    if let Some(conf_path) = experimental_store_composition {
         let conf_text = tokio::fs::read_to_string(conf_path).await?;
         return Ok(with_registry(&REG, || toml::from_str(&conf_text))?);
     }
 
     let mut configs: CompositionConfigs = Default::default();
 
-    let blob_store_url = Url::parse(&urls.blob_store_addr)?;
-    let chunk_store_url = Url::parse(&urls.chunk_store_addr)?;
-    let directory_service_url = Url::parse(&urls.directory_service_addr)?;
     configs.blob_stores.insert(
         "root".into(),
-        with_registry(&REG, || blob_store_url.try_into())?,
+        with_registry(&REG, || blob_store_addr.try_into())?,
     );
     configs.chunk_stores.insert(
         "root".into(),
-        with_registry(&REG, || chunk_store_url.try_into())?,
+        with_registry(&REG, || chunk_store_addr.try_into())?,
     );
     configs.directoryservices.insert(
         "root".into(),
-        with_registry(&REG, || directory_service_url.try_into())?,
+        with_registry(&REG, || directory_service_addr.try_into())?,
     );
     Ok(configs)
 }
