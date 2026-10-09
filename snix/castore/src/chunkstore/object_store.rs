@@ -17,7 +17,7 @@ use tracing::{Level, instrument, warn};
 /// Stores Chunks in any backend supported by the [object_store] crate.
 ///
 /// Each [Chunk] is stored as a zstd-compressed object
-/// at `{base_path}/chunk/b3/{HEXLOWER(digest[0..2])}/{HEXLOWER(digest)}`.
+/// at `{base_path}/chunks/b3/{HEXLOWER(digest[0..2])}/{HEXLOWER(digest)}`.
 pub struct ObjectStoreChunkStore {
     instance_name: String,
     object_store: Arc<dyn object_store::ObjectStore>,
@@ -44,7 +44,7 @@ impl ObjectStoreChunkStore {
 fn derive_chunk_path(base_path: &Path, digest: &B3Digest) -> Path {
     base_path
         .clone()
-        .join("chunk")
+        .join("chunks")
         .join("b3")
         .join(HEXLOWER.encode(&digest[..2]))
         .join(HEXLOWER.encode(&digest[..]))
