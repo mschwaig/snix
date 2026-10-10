@@ -110,11 +110,11 @@ pub(crate) mod derivation_builtins {
     use nix_compat::nixhash::{HashAlgo, NixHash};
     use nix_compat::store_path::hash_placeholder;
     use snix_build_glue::builder;
+    use snix_build_glue::fetchurl_derivation::fetchurl_derivation_to_fetch;
     use snix_eval::generators::Gen;
     use snix_eval::{NixContext, NixContextElement, NixString, try_cek_to_value};
 
     use crate::builtins::utils::{select_string, strong_importing_coerce_to_string};
-    use crate::fetchurl::fetchurl_derivation_to_fetch;
 
     use super::*;
 
@@ -445,12 +445,11 @@ pub(crate) mod derivation_builtins {
 
         // If the derivation is a fake derivation (builtin:fetchurl),
         // synthesize a [Fetch] and add it there, too.
-        if a_drv.command() == "builtin:fetchurl" {
-            let (name, fetch) = fetchurl_derivation_to_fetch(&a_drv)
-                .map_err(|e| ErrorKind::SnixError(Arc::from(e)))?;
-
+        if let Some((name, fetch)) = fetchurl_derivation_to_fetch(&a_drv)
+            .map_err(|err| ErrorKind::SnixError(Arc::new(err)))?
+        {
             known_paths
-                .add_fetch(fetch, &name)
+                .add_fetch(fetch, name)
                 .map_err(|e| ErrorKind::SnixError(Arc::from(e)))?;
         }
 

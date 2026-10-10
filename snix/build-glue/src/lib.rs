@@ -1,6 +1,7 @@
 pub mod build_state;
 pub mod builder;
 pub mod fetchers;
+pub mod fetchurl_derivation;
 pub mod known_paths;
 
 // Used as user agent in various HTTP Clients
