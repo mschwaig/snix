@@ -121,6 +121,7 @@ impl KnownPaths {
     /// Insert a new [Fetch] into this struct, which *must* have an expected
     /// hash (otherwise we wouldn't be able to calculate the store path).
     /// Fetches without a known hash need to be fetched inside builtins.
+    /// Returns the [StorePathRef] that this would produce.
     pub fn add_fetch<'a>(
         &mut self,
         fetch: Fetch,
