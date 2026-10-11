@@ -304,7 +304,7 @@ where
 mod test {
     use bytes::Bytes;
     use nix_compat::derivation::UnverifiedDerivation;
-    use nix_compat::store_path::{StorePath, hash_placeholder};
+    use nix_compat::store_path::{StorePath, StorePathName, hash_placeholder};
     use snix_castore::fixtures::DUMMY_DIGEST;
     use snix_castore::{Node, PathComponent};
     use std::collections::{BTreeMap, HashSet};
@@ -335,22 +335,22 @@ mod test {
 
         let derivation1 =
             UnverifiedDerivation::from_aterm_bytes(aterm_bytes).expect("drv1 must parse");
-        let drv_path1 =
-            StorePath::from_bytes("ch49594n9avinrf8ip0aslidkc4lxkqv-foo.drv".as_bytes())
-                .expect("drv path1 must parse");
         let derivation2 =
             UnverifiedDerivation::from_aterm_bytes(dep_drv_bytes).expect("drv2 must parse");
-        let drv_path2 =
-            StorePath::from_bytes("ss2p4wmxijn652haqyd7dckxwl4c7hxx-bar.drv".as_bytes())
-                .expect("drv path2 must parse");
 
         let mut known_paths = KnownPaths::default();
 
         known_paths
-            .add_derivation(drv_path2, derivation2)
+            .add_derivation(
+                StorePathName::from_str("bar").expect("valid drv_name"),
+                derivation2.into_parts().0,
+            )
             .expect("must succeed");
         known_paths
-            .add_derivation(drv_path1, derivation1.clone())
+            .add_derivation(
+                StorePathName::from_str("foo").expect("valid drv_name"),
+                derivation1.clone().into_parts().0,
+            )
             .expect("must succeed");
 
         let build_request = derivation_into_build_request(

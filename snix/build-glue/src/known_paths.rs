@@ -8,11 +8,11 @@
 //! This data is required to find the derivation needed to actually trigger the
 //! build, if necessary.
 
-use hashbrown::HashMap;
+use hashbrown::{HashMap, hash_map::Entry};
 use nix_compat::{
-    derivation::{Derivation, DerivationError, HashDerivationModuloLookup, UnverifiedDerivation},
+    derivation::{Derivation, DerivationBuilder, DerivationError, HashDerivationModuloLookup},
     nixhash::Sha256,
-    store_path::{ParseStorePathError, StorePath, StorePathName, StorePathNameBuf, StorePathRef},
+    store_path::{StorePath, StorePathName, StorePathNameBuf, StorePathRef},
 };
 
 use crate::fetchers::Fetch;
@@ -59,28 +59,22 @@ impl KnownPaths {
         self.outputs_to_drvpath.get(output_path)
     }
 
+    /// Insert a new [DerivationBuilder] into this struct.
+    ///
+    /// The [DerivationBuilder], alongside with a `drv_name` and the state of
+    /// previously added Derivations is used to construct a verified [Derivation].
+    ///
+    /// For this to succeed, all input derivations this refers to must have
+    /// previously been successfully inserted to this struct.
+    ///
+    /// On success, returns a reference to the verified [Derivation].
     pub fn add_derivation(
         &mut self,
-        drv_path: StorePath,
-        drv: UnverifiedDerivation,
-    ) -> Result<(), DerivationError> {
-        let drv_name = drv_path.name().strip_drv_ext().ok_or_else(|| {
-            DerivationError::InvalidDerivationName(
-                drv_path.name().as_bytes().to_vec(),
-                ParseStorePathError::Name,
-            )
-        })?;
-        let drv = drv.verify(drv_name, &*self)?;
+        drv_name: &StorePathName,
+        drv: DerivationBuilder,
+    ) -> Result<&Derivation, DerivationError> {
+        let drv = drv.build(drv_name, &*self)?;
 
-        self.add_verified_derivation(drv)
-    }
-
-    /// Insert a new [Derivation] into this struct.
-    /// The Derivation struct must pass validation, and its output paths need to
-    /// be fully calculated.
-    /// All input derivations this refers to must also be inserted to this
-    /// struct.
-    pub fn add_verified_derivation(&mut self, drv: Derivation) -> Result<(), DerivationError> {
         // check input derivations to have been inserted.
         #[cfg(debug_assertions)]
         {
@@ -102,20 +96,18 @@ impl KnownPaths {
 
         // insert the derivation itself
         #[allow(unused_variables)] // assertions on this only compiled in debug builds
-        let old = self
-            .derivations
-            .insert(drv.drv_path().to_owned(), (hash_derivation_modulo, drv));
+        let entry = self.derivations.entry(drv.drv_path().to_owned());
 
-        #[cfg(debug_assertions)]
-        {
-            if let Some(old) = old {
+        match entry {
+            Entry::Occupied(old) => {
                 debug_assert!(
-                    old.0 == hash_derivation_modulo,
+                    old.get().0 == hash_derivation_modulo,
                     "hash derivation modulo for a given derivation should always be calculated the same"
                 );
+                Ok(&old.into_mut().1)
             }
+            Entry::Vacant(entry) => Ok(&entry.insert((hash_derivation_modulo, drv)).1),
         }
-        Ok(())
     }
 
     /// Insert a new [Fetch] into this struct, which *must* have an expected
@@ -258,7 +250,10 @@ mod tests {
 
         // Add BAR_DRV
         known_paths
-            .add_derivation(BAR_DRV_PATH.clone(), BAR_DRV.clone())
+            .add_derivation(
+                StorePathName::from_str("bar").expect("valid name"),
+                BAR_DRV.clone().into_parts().0,
+            )
             .expect("must verify BAR_DRV");
 
         // We should get it back
@@ -286,7 +281,10 @@ mod tests {
         // Now insert FOO_DRV too. It shouldn't panic, as BAR_DRV is already
         // added.
         known_paths
-            .add_derivation(FOO_DRV_PATH.clone(), FOO_DRV.clone())
+            .add_derivation(
+                StorePathName::from_str("foo").expect("valid name"),
+                FOO_DRV.clone().into_parts().0,
+            )
             .expect("must verify FOO_DRV");
 
         assert_eq!(
@@ -345,7 +343,10 @@ mod tests {
 
         // Add BAR_DRV
         known_paths
-            .add_derivation(BAR_DRV_PATH.clone(), BAR_DRV.clone())
+            .add_derivation(
+                StorePathName::from_str("bar").expect("valid name"),
+                BAR_DRV.clone().into_parts().0,
+            )
             .expect("must verify BAR_DRV");
 
         // We should be able to find BAR_DRV_PATH and BAR_DRV as a pair in get_derivations.

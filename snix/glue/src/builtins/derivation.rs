@@ -110,6 +110,7 @@ pub(crate) mod derivation_builtins {
     use nix_compat::nixhash::{HashAlgo, NixHash};
     use nix_compat::store_path::{StorePathName, hash_placeholder};
     use snix_build_glue::builder;
+
     use snix_build_glue::fetchurl_derivation::fetchurl_derivation_to_fetch;
     use snix_eval::generators::Gen;
     use snix_eval::{NixContext, NixContextElement, NixString, try_cek_to_value};
@@ -156,7 +157,7 @@ pub(crate) mod derivation_builtins {
         }
 
         let name = name.to_str().context("determining derivation name")?;
-        let name = StorePathName::from_slice(&name).map_err(|err| {
+        let drv_name = StorePathName::from_slice(&name).map_err(|err| {
             DerivationError::InvalidDerivation(
                 nix_compat::derivation::DerivationError::InvalidDerivationName(
                     name.to_vec(),
@@ -415,15 +416,14 @@ pub(crate) mod derivation_builtins {
         let mut known_paths = state.as_ref().build_state.known_paths.write();
         populate_inputs(&mut drv, input_context, &known_paths);
 
-        // Build the Derivation struct, validate and set output paths
-        let a_drv = drv
-            .build(name, &*known_paths)
-            .map_err(DerivationError::InvalidDerivation)?;
+        // Register the Derivation in known_paths, getting back a verified variant.
+        let drv = known_paths
+            .add_derivation(drv_name, drv)
+            .map_err(|e| ErrorKind::SnixError(Arc::from(e)))?;
 
         // Assemble the attrset to return from this builtin.
         let out = Value::Attrs(NixAttrs::from_iter(
-            a_drv
-                .outputs()
+            drv.outputs()
                 .iter()
                 .map(|(output_name, path)| {
                     (
@@ -431,7 +431,7 @@ pub(crate) mod derivation_builtins {
                         NixString::new_context_from(
                             NixContextElement::Single {
                                 name: output_name.into(),
-                                derivation: a_drv.drv_path().to_absolute_path(),
+                                derivation: drv.drv_path().to_absolute_path(),
                             }
                             .into(),
                             path.to_absolute_path(),
@@ -441,24 +441,20 @@ pub(crate) mod derivation_builtins {
                 .chain(std::iter::once((
                     "drvPath".to_owned(),
                     NixString::new_context_from(
-                        NixContextElement::Derivation(a_drv.drv_path().to_absolute_path()).into(),
-                        a_drv.drv_path().to_absolute_path(),
+                        NixContextElement::Derivation(drv.drv_path().to_absolute_path()).into(),
+                        drv.drv_path().to_absolute_path(),
                     ),
                 ))),
         ));
+        let drv_name = drv.name().to_owned();
 
         // If the derivation is a fake derivation (builtin:fetchurl),
         // synthesize a [Fetch] and add it there, too.
-        if let Some(fetch) = fetchurl_derivation_to_fetch(&a_drv)
-            .map_err(|err| ErrorKind::SnixError(Arc::new(err)))?
+        if let Some(fetch) =
+            fetchurl_derivation_to_fetch(drv).map_err(|err| ErrorKind::SnixError(Arc::new(err)))?
         {
-            known_paths.add_fetch(fetch, a_drv.name());
+            known_paths.add_fetch(fetch, &drv_name);
         }
-
-        // Register the Derivation in known_paths.
-        known_paths
-            .add_verified_derivation(a_drv)
-            .map_err(|e| ErrorKind::SnixError(Arc::from(e)))?;
 
         Ok(out)
     }
