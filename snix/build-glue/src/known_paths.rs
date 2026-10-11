@@ -15,7 +15,10 @@ use nix_compat::{
     store_path::{StorePath, StorePathName, StorePathNameBuf, StorePathRef},
 };
 
-use crate::fetchers::Fetch;
+use crate::{
+    fetchers::Fetch,
+    fetchurl_derivation::{self, fetchurl_derivation_to_fetch},
+};
 
 /// Struct keeping track of all known Derivations in the current evaluation.
 /// This keeps both the Derivation struct, as well as the "Hash derivation
@@ -72,8 +75,14 @@ impl KnownPaths {
         &mut self,
         drv_name: &StorePathName,
         drv: DerivationBuilder,
-    ) -> Result<&Derivation, DerivationError> {
+    ) -> Result<&Derivation, Error> {
         let drv = drv.build(drv_name, &*self)?;
+
+        // If the derivation is a fake derivation (builtin:fetchurl),
+        // synthesize a [Fetch] and add it to the fetches, too.
+        if let Some(fetch) = fetchurl_derivation_to_fetch(drv.as_unverified())? {
+            self.add_fetch(fetch, drv_name);
+        }
 
         // check input derivations to have been inserted.
         #[cfg(debug_assertions)]
@@ -148,6 +157,14 @@ impl HashDerivationModuloLookup for &KnownPaths {
     fn lookup_hdm(&self, drv_path: &StorePathRef<'_>) -> Option<Sha256> {
         self.get_hash_derivation_modulo(drv_path).copied()
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error(transparent)]
+    DerivationError(#[from] DerivationError),
+    #[error("invalid builtin:fetchurl derivation: {0}")]
+    FetchurlDerivation(#[from] fetchurl_derivation::Error),
 }
 
 #[cfg(test)]
