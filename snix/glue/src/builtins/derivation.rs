@@ -449,10 +449,10 @@ pub(crate) mod derivation_builtins {
 
         // If the derivation is a fake derivation (builtin:fetchurl),
         // synthesize a [Fetch] and add it there, too.
-        if let Some((name, fetch)) = fetchurl_derivation_to_fetch(&a_drv)
+        if let Some(fetch) = fetchurl_derivation_to_fetch(&a_drv)
             .map_err(|err| ErrorKind::SnixError(Arc::new(err)))?
         {
-            known_paths.add_fetch(fetch, name);
+            known_paths.add_fetch(fetch, a_drv.name());
         }
 
         // Register the Derivation in known_paths.

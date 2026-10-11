@@ -1,20 +1,15 @@
-//! Code translating from a `builtin:derivation` [Derivation] to a [Fetch].
+//! Code translating from a `builtin:derivation` [UnverifiedDerivation] to a [Fetch].
 use crate::fetchers::Fetch;
-use nix_compat::{
-    derivation::{Derivation, OutputHash, OutputHashMode},
-    store_path::StorePathName,
-};
+use nix_compat::derivation::{OutputHash, OutputHashMode, UnverifiedDerivation};
 use tracing::instrument;
 
-/// Parses a [Derivation] to a [Fetch] if using the `builtin:fetchurl` command and otherwise valid
+/// Parses a [UnverifiedDerivation] to a [Fetch] if using the `builtin:fetchurl` command and otherwise valid
 ///
 /// If it doesn't use `builtin:fetchurl` as `command`, `Ok(None)` is returned.
 /// If it uses `builtin:fetchurl`, but is otherwise invalid, an [Error] is returned.
-/// Otherwise returns the synthesized [Fetch], as well as the name.
+/// Otherwise returns the synthesized [Fetch].
 #[instrument]
-pub fn fetchurl_derivation_to_fetch(
-    drv: &Derivation,
-) -> Result<Option<(&StorePathName, Fetch)>, Error> {
+pub fn fetchurl_derivation_to_fetch(drv: &UnverifiedDerivation) -> Result<Option<Fetch>, Error> {
     if drv.command() != "builtin:fetchurl" {
         return Ok(None);
     }
@@ -36,34 +31,31 @@ pub fn fetchurl_derivation_to_fetch(
         .parse()
         .or(Err(Error::URLInvalid))?;
 
-    Ok(Some((
-        drv.name(),
-        match output_hash {
-            OutputHash {
-                mode: OutputHashMode::Flat,
-                hash,
-            } => Fetch::URL {
-                url,
-                exp_hash: Some(hash.to_owned()),
-            },
-            OutputHash {
-                mode: OutputHashMode::Recursive,
-                hash,
-            } if drv.environment().get("executable").map(|b| b.as_slice()) == Some(b"1") => {
-                Fetch::Executable {
-                    url,
-                    hash: hash.to_owned(),
-                }
-            }
-            OutputHash {
-                mode: OutputHashMode::Recursive,
-                hash,
-            } => Fetch::NAR {
+    Ok(Some(match output_hash {
+        OutputHash {
+            mode: OutputHashMode::Flat,
+            hash,
+        } => Fetch::URL {
+            url,
+            exp_hash: Some(hash.to_owned()),
+        },
+        OutputHash {
+            mode: OutputHashMode::Recursive,
+            hash,
+        } if drv.environment().get("executable").map(|b| b.as_slice()) == Some(b"1") => {
+            Fetch::Executable {
                 url,
                 hash: hash.to_owned(),
-            },
+            }
+        }
+        OutputHash {
+            mode: OutputHashMode::Recursive,
+            hash,
+        } => Fetch::NAR {
+            url,
+            hash: hash.to_owned(),
         },
-    )))
+    }))
 }
 
 #[derive(Debug, thiserror::Error)]
