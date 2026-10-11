@@ -452,9 +452,7 @@ pub(crate) mod derivation_builtins {
         if let Some((name, fetch)) = fetchurl_derivation_to_fetch(&a_drv)
             .map_err(|err| ErrorKind::SnixError(Arc::new(err)))?
         {
-            known_paths
-                .add_fetch(fetch, name)
-                .map_err(|e| ErrorKind::SnixError(Arc::from(e)))?;
+            known_paths.add_fetch(fetch, name);
         }
 
         // Register the Derivation in known_paths.

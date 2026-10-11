@@ -122,11 +122,7 @@ impl KnownPaths {
     /// hash (otherwise we wouldn't be able to calculate the store path).
     /// Fetches without a known hash need to be fetched inside builtins.
     /// Returns the [StorePathRef] that this would produce.
-    pub fn add_fetch<'a>(
-        &mut self,
-        fetch: Fetch,
-        name: &'a StorePathName,
-    ) -> Result<StorePathRef<'a>, ParseStorePathError> {
+    pub fn add_fetch<'a>(&mut self, fetch: Fetch, name: &'a StorePathName) -> StorePathRef<'a> {
         let store_path = fetch
             .store_path(name)
             .expect("Snix bug: fetch must have an expected hash");
@@ -134,7 +130,7 @@ impl KnownPaths {
         self.outputs_to_fetches
             .insert(store_path.to_owned(), (name.to_owned(), fetch));
 
-        Ok(store_path)
+        store_path
     }
 
     /// Return the name and fetch producing the passed output path.
@@ -329,7 +325,6 @@ mod tests {
             *FETCH_TARBALL_OUT_PATH,
             known_paths
                 .add_fetch(FETCH_TARBALL.clone(), StorePathName::source())
-                .unwrap()
                 .to_owned()
         );
 
@@ -340,7 +335,6 @@ mod tests {
                     FETCH_URL.clone(),
                     StorePathName::from_str("notmuch-extract-patch").unwrap()
                 )
-                .unwrap()
                 .to_owned()
         );
     }
