@@ -24,6 +24,7 @@ pub async fn make_listener(
         &{
             let mut system_options = tokio_listener::SystemOptions::default();
             system_options.sleep_on_errors = true;
+            system_options.nodelay = true;
             system_options
         },
         user_options,
