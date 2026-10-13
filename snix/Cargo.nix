@@ -8340,9 +8340,9 @@ rec {
       };
       "fuse-backend-rs" = rec {
         crateName = "fuse-backend-rs";
-        version = "0.12.0";
+        version = "0.14.0";
         edition = "2018";
-        sha256 = "06yimnygx8k1mx7wgbs6fg8id346zgnanxbzdhx28rg1ra038rp1";
+        sha256 = "0zgx13pyl3bq91l166bfx1llpgs2qzl4m3h739hglcg7hn0i9n0k";
         libName = "fuse_backend_rs";
         authors = [
           "Liu Bo <bo.liu@linux.alibaba.com>"
@@ -8397,12 +8397,6 @@ rec {
           {
             name = "radix_trie";
             packageId = "radix_trie";
-          }
-          {
-            name = "vhost";
-            packageId = "vhost";
-            optional = true;
-            features = [ "vhost-user-slave" ];
           }
           {
             name = "virtio-queue";
@@ -8471,6 +8465,7 @@ rec {
             "vhost"
             "caps"
           ];
+          "virtio-bindings" = [ "dep:virtio-bindings" ];
           "virtio-queue" = [ "dep:virtio-queue" ];
           "virtiofs" = [
             "virtio-queue"
@@ -8482,10 +8477,7 @@ rec {
         resolvedDefaultFeatures = [
           "caps"
           "core-foundation-sys"
-          "default"
           "fusedev"
-          "vhost"
-          "vhost-user-fs"
           "virtio-queue"
           "virtiofs"
           "vmm-sys-util"
@@ -23343,6 +23335,7 @@ rec {
             name = "fuse-backend-rs";
             packageId = "fuse-backend-rs";
             optional = true;
+            usesDefaultFeatures = false;
           }
           {
             name = "futures";
@@ -23517,7 +23510,7 @@ rec {
           }
           {
             name = "virtio-bindings";
-            packageId = "virtio-bindings 0.2.6";
+            packageId = "virtio-bindings";
             optional = true;
           }
           {
@@ -23633,7 +23626,10 @@ rec {
             "dep:threadpool"
             "dep:libc"
           ];
-          "fuse" = [ "fs" ];
+          "fuse" = [
+            "fs"
+            "fuse-backend-rs?/fusedev"
+          ];
           "mocks" = [ "dep:mockall" ];
           "toml" = [ "dep:toml" ];
           "virtiofs" = [
@@ -23644,7 +23640,6 @@ rec {
             "dep:vm-memory"
             "dep:vmm-sys-util"
             "dep:virtio-bindings"
-            "fuse-backend-rs?/vhost-user-fs"
             "fuse-backend-rs?/virtiofs"
           ];
           "xp-composition-cli" = [
@@ -30661,6 +30656,19 @@ rec {
               );
           }
           {
+            name = "rand";
+            packageId = "rand 0.10.2";
+            optional = true;
+            target =
+              { target, features }:
+              (
+                !(
+                  ("wasm32" == target."arch" or null)
+                  && (("unknown" == target."os" or null) || ("none" == target."os" or null))
+                )
+              );
+          }
+          {
             name = "wasm-bindgen";
             packageId = "wasm-bindgen";
             optional = true;
@@ -30734,6 +30742,7 @@ rec {
         };
         resolvedDefaultFeatures = [
           "default"
+          "fast-rng"
           "rng"
           "std"
           "v4"
@@ -30767,54 +30776,57 @@ rec {
       };
       "vhost" = rec {
         crateName = "vhost";
-        version = "0.6.1";
-        edition = "2018";
-        sha256 = "0dczb95w5vcq852fzxsbc6zh7ll0p1mz7yrrchvv8xjjpy6rwxm6";
+        version = "0.15.0";
+        edition = "2021";
+        sha256 = "12n2aa2zdajnn8px17sbig7q1xgzbi29lk1hll8dcdvb7k790vf7";
         authors = [
           "Liu Jiang <gerry@linux.alibaba.com>"
         ];
         dependencies = [
           {
             name = "bitflags";
-            packageId = "bitflags 1.3.2";
+            packageId = "bitflags 2.13.1";
           }
           {
             name = "libc";
             packageId = "libc";
           }
           {
+            name = "uuid";
+            packageId = "uuid";
+            features = [
+              "v4"
+              "fast-rng"
+            ];
+          }
+          {
             name = "vm-memory";
             packageId = "vm-memory";
+            features = [ "backend-mmap" ];
           }
           {
             name = "vmm-sys-util";
             packageId = "vmm-sys-util";
           }
         ];
-        devDependencies = [
-          {
-            name = "vm-memory";
-            packageId = "vm-memory";
-            features = [ "backend-mmap" ];
-          }
-        ];
         features = {
           "vhost-net" = [ "vhost-kern" ];
-          "vhost-user-master" = [ "vhost-user" ];
-          "vhost-user-slave" = [ "vhost-user" ];
+          "vhost-user-backend" = [ "vhost-user" ];
+          "vhost-user-frontend" = [ "vhost-user" ];
           "vhost-vdpa" = [ "vhost-kern" ];
+          "xen" = [ "vm-memory/xen" ];
         };
         resolvedDefaultFeatures = [
           "default"
           "vhost-user"
-          "vhost-user-slave"
+          "vhost-user-backend"
         ];
       };
       "vhost-user-backend" = rec {
         crateName = "vhost-user-backend";
-        version = "0.8.0";
-        edition = "2018";
-        sha256 = "00s33wy8cj2i8b4hlxn7wd8zm1fpaa5kjhzv77b3khsavf8pn8wz";
+        version = "0.21.0";
+        edition = "2021";
+        sha256 = "0hs2b0927k545cjjhx1p2yjpybgb66xi4vlsa4v2ri2r7a0qfdbq";
         libName = "vhost_user_backend";
         authors = [
           "The Cloud Hypervisor Authors"
@@ -30831,11 +30843,11 @@ rec {
           {
             name = "vhost";
             packageId = "vhost";
-            features = [ "vhost-user-slave" ];
+            features = [ "vhost-user-backend" ];
           }
           {
             name = "virtio-bindings";
-            packageId = "virtio-bindings 0.1.0";
+            packageId = "virtio-bindings";
           }
           {
             name = "virtio-queue";
@@ -30847,6 +30859,7 @@ rec {
             features = [
               "backend-mmap"
               "backend-atomic"
+              "backend-bitmap"
             ];
           }
           {
@@ -30859,8 +30872,9 @@ rec {
             name = "vhost";
             packageId = "vhost";
             features = [
-              "vhost-user-master"
-              "vhost-user-slave"
+              "test-utils"
+              "vhost-user-frontend"
+              "vhost-user-backend"
             ];
           }
           {
@@ -30869,29 +30883,26 @@ rec {
             features = [
               "backend-mmap"
               "backend-atomic"
-              "backend-bitmap"
             ];
           }
         ];
-
-      };
-      "virtio-bindings 0.1.0" = rec {
-        crateName = "virtio-bindings";
-        version = "0.1.0";
-        edition = "2018";
-        sha256 = "0sxxhhmz1r4s4q5pd2lykswcv9qk05fmpwc5xlb8aj45h8bi5x9z";
-        libName = "virtio_bindings";
-        authors = [
-          "Sergio Lopez <slp@redhat.com>"
-        ];
         features = {
+          "postcopy" = [
+            "vhost/postcopy"
+            "userfaultfd"
+          ];
+          "userfaultfd" = [ "dep:userfaultfd" ];
+          "xen" = [
+            "vm-memory/xen"
+            "vhost/xen"
+          ];
         };
       };
-      "virtio-bindings 0.2.6" = rec {
+      "virtio-bindings" = rec {
         crateName = "virtio-bindings";
-        version = "0.2.6";
+        version = "0.2.7";
         edition = "2021";
-        sha256 = "1jzqrah4sibnaa80hwd1qk28dwn3d4wcvgdqpgkkp9nm4s54jkw0";
+        sha256 = "0s485wb9bnc8a5j6aq1vyspf3k35jja7lbjn7db7hamzrw4iy7q9";
         libName = "virtio_bindings";
         authors = [
           "Sergio Lopez <slp@redhat.com>"
@@ -30900,25 +30911,36 @@ rec {
       };
       "virtio-queue" = rec {
         crateName = "virtio-queue";
-        version = "0.7.1";
+        version = "0.17.0";
         edition = "2021";
-        sha256 = "1gbppbapj7c0vyca88vl34cx4sp2cy9yg0v6bvyd5h11rhmixa1v";
+        sha256 = "1bwbd22jwbj23d513mnq26b8ph7kgwdzz60xnkfmy5pd697hhn73";
         libName = "virtio_queue";
         authors = [
           "The Chromium OS Authors"
         ];
         dependencies = [
           {
+            name = "libc";
+            packageId = "libc";
+            target = { target, features }: (target."kani" or false);
+          }
+          {
             name = "log";
             packageId = "log";
           }
           {
             name = "virtio-bindings";
-            packageId = "virtio-bindings 0.1.0";
+            packageId = "virtio-bindings";
           }
           {
             name = "vm-memory";
             packageId = "vm-memory";
+          }
+          {
+            name = "vm-memory";
+            packageId = "vm-memory";
+            target = { target, features }: (target."kani" or false);
+            features = [ "backend-mmap" ];
           }
           {
             name = "vmm-sys-util";
@@ -30940,9 +30962,9 @@ rec {
       };
       "vm-memory" = rec {
         crateName = "vm-memory";
-        version = "0.10.0";
+        version = "0.17.1";
         edition = "2021";
-        sha256 = "0z423a8i4s3addq4yjad4ar5l6qwarjwdn94lismbd0mcqv712k8";
+        sha256 = "103kgafjwicn7287jfw2dxmcfvjjpy193pbw6z9sp73896h4i4zk";
         libName = "vm_memory";
         authors = [
           "Liu Jiang <gerry@linux.alibaba.com>"
@@ -30956,11 +30978,17 @@ rec {
           {
             name = "libc";
             packageId = "libc";
+            optional = true;
+          }
+          {
+            name = "thiserror";
+            packageId = "thiserror 2.0.20";
           }
           {
             name = "winapi";
             packageId = "winapi";
-            target = { target, features }: (target."windows" or false);
+            optional = true;
+            target = { target, features }: (builtins.elem "windows" target."family");
             features = [
               "errhandlingapi"
               "sysinfoapi"
@@ -30970,19 +30998,38 @@ rec {
         features = {
           "arc-swap" = [ "dep:arc-swap" ];
           "backend-atomic" = [ "arc-swap" ];
+          "backend-bitmap" = [
+            "dep:libc"
+            "dep:winapi"
+          ];
+          "backend-mmap" = [
+            "dep:libc"
+            "dep:winapi"
+          ];
+          "bitflags" = [ "dep:bitflags" ];
+          "default" = [ "rawfd" ];
+          "rawfd" = [ "dep:libc" ];
+          "vmm-sys-util" = [ "dep:vmm-sys-util" ];
+          "xen" = [
+            "backend-mmap"
+            "bitflags"
+            "vmm-sys-util"
+          ];
         };
         resolvedDefaultFeatures = [
           "arc-swap"
           "backend-atomic"
+          "backend-bitmap"
           "backend-mmap"
           "default"
+          "rawfd"
         ];
       };
       "vmm-sys-util" = rec {
         crateName = "vmm-sys-util";
-        version = "0.11.2";
+        version = "0.15.0";
         edition = "2021";
-        sha256 = "0a9azxk6wsahwkggshbdga4jdryzfw6j5r21f11gf50j4f2b1ds8";
+        sha256 = "0bv4l7ihgg0dlqbrdgxlm41mn5dyy6yazyf24xl1g98pyvyn4v2h";
         libName = "vmm_sys_util";
         authors = [
           "Intel Virtualization Team <vmm-maintainers@intel.com>"
@@ -30991,8 +31038,6 @@ rec {
           {
             name = "bitflags";
             packageId = "bitflags 1.3.2";
-            target =
-              { target, features }: (("linux" == target."os" or null) || ("android" == target."os" or null));
           }
           {
             name = "libc";

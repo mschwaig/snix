@@ -107,10 +107,9 @@ virtiofs = [
   "dep:vm-memory",
   "dep:vmm-sys-util",
   "dep:virtio-bindings",
-  "fuse-backend-rs?/vhost-user-fs", # impl FsCacheReqHandler for SlaveFsCacheReq
   "fuse-backend-rs?/virtiofs",
 ]
-fuse = ["fs"]
+fuse = ["fs", "fuse-backend-rs?/fusedev"]
 # exposes Mock*Service structs.
 mocks = ["dep:mockall"]
 serde = []

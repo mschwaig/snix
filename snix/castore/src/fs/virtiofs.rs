@@ -7,12 +7,10 @@ use std::{
 
 use fuse_backend_rs::{
     api::{filesystem::FileSystem, server::Server},
-    transport::{FsCacheReqHandler, Reader, VirtioFsWriter},
+    transport::{Reader, VirtioFsWriter},
 };
 use tracing::error;
-use vhost::vhost_user::{
-    Listener, SlaveFsCacheReq, VhostUserProtocolFeatures, VhostUserVirtioFeatures,
-};
+use vhost::vhost_user::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 use vhost_user_backend::{VhostUserBackendMut, VhostUserDaemon, VringMutex, VringState, VringT};
 use virtio_bindings::bindings::virtio_ring::{
     VIRTIO_RING_F_EVENT_IDX, VIRTIO_RING_F_INDIRECT_DESC,
@@ -38,10 +36,8 @@ enum Error {
     HandleRequests(fuse_backend_rs::Error),
     /// Failed to construct new vhost user daemon.
     NewDaemon,
-    /// Failed to start the vhost user daemon.
-    StartDaemon,
-    /// Failed to wait for the vhost user daemon.
-    WaitDaemon,
+    /// Failed to serve the vhost user daemon.
+    ServeDaemon,
 }
 
 impl fmt::Display for Error {
@@ -65,7 +61,6 @@ where
     server: Arc<Server<Arc<FS>>>,
     event_idx: bool,
     guest_mem: GuestMemoryAtomic<GuestMemoryMmap>,
-    cache_req: Option<SlaveFsCacheReq>,
 }
 
 impl<FS> VhostUserFsBackend<FS>
@@ -89,14 +84,7 @@ where
             // kernels reject responses shorter than `fuse_out_header`.
             let len = self
                 .server
-                .handle_message(
-                    reader,
-                    writer.into(),
-                    self.cache_req
-                        .as_mut()
-                        .map(|req| req as &mut dyn FsCacheReqHandler),
-                    None,
-                )
+                .handle_message(reader, writer.into(), None, None)
                 .map_err(Error::HandleRequests)?;
 
             if let Err(error) =
@@ -134,10 +122,13 @@ where
     }
 }
 
-impl<FS> VhostUserBackendMut<VringMutex> for VhostUserFsBackend<FS>
+impl<FS> VhostUserBackendMut for VhostUserFsBackend<FS>
 where
     FS: FileSystem + Send + Sync,
 {
+    type Bitmap = ();
+    type Vring = VringMutex;
+
     fn num_queues(&self) -> usize {
         NUM_QUEUES
     }
@@ -154,7 +145,7 @@ where
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::SLAVE_REQ
+        VhostUserProtocolFeatures::MQ
     }
 
     fn set_event_idx(&mut self, enabled: bool) {
@@ -166,17 +157,13 @@ where
         Ok(())
     }
 
-    fn set_slave_req_fd(&mut self, cache_req: SlaveFsCacheReq) {
-        self.cache_req = Some(cache_req);
-    }
-
     fn handle_event(
         &mut self,
         device_event: u16,
         evset: vmm_sys_util::epoll::EventSet,
         vrings: &[VringMutex],
         _thread_id: usize,
-    ) -> std::io::Result<bool> {
+    ) -> std::io::Result<()> {
         if evset != EventSet::IN {
             return Err(Error::HandleEventNotEpollIn.into());
         }
@@ -205,7 +192,7 @@ where
             self.process_queue(&mut queue)?;
         }
 
-        Ok(false)
+        Ok(())
     }
 }
 
@@ -222,10 +209,7 @@ where
         server,
         guest_mem: guest_mem.clone(),
         event_idx: false,
-        cache_req: None,
     }));
-
-    let listener = Listener::new(socket, true).unwrap();
 
     let mut fs_daemon = VhostUserDaemon::new(
         String::from("vhost-user-fs-snix-castore"),
@@ -234,9 +218,7 @@ where
     )
     .map_err(|_| Error::NewDaemon)?;
 
-    fs_daemon.start(listener).map_err(|_| Error::StartDaemon)?;
-
-    fs_daemon.wait().map_err(|_| Error::WaitDaemon)?;
+    fs_daemon.serve(socket).map_err(|_| Error::ServeDaemon)?;
 
     Ok(())
 }

@@ -6124,9 +6124,9 @@ rec {
       };
       "fuse-backend-rs" = rec {
         crateName = "fuse-backend-rs";
-        version = "0.12.0";
+        version = "0.14.0";
         edition = "2018";
-        sha256 = "06yimnygx8k1mx7wgbs6fg8id346zgnanxbzdhx28rg1ra038rp1";
+        sha256 = "0zgx13pyl3bq91l166bfx1llpgs2qzl4m3h739hglcg7hn0i9n0k";
         libName = "fuse_backend_rs";
         authors = [
           "Liu Bo <bo.liu@linux.alibaba.com>"
@@ -6244,6 +6244,7 @@ rec {
             "vhost"
             "caps"
           ];
+          "virtio-bindings" = [ "dep:virtio-bindings" ];
           "virtio-queue" = [ "dep:virtio-queue" ];
           "virtiofs" = [
             "virtio-queue"
@@ -6255,7 +6256,6 @@ rec {
         resolvedDefaultFeatures = [
           "caps"
           "core-foundation-sys"
-          "default"
           "fusedev"
           "vmm-sys-util"
         ];
@@ -18264,6 +18264,7 @@ rec {
             name = "fuse-backend-rs";
             packageId = "fuse-backend-rs";
             optional = true;
+            usesDefaultFeatures = false;
           }
           {
             name = "futures";
@@ -18452,7 +18453,10 @@ rec {
             "dep:threadpool"
             "dep:libc"
           ];
-          "fuse" = [ "fs" ];
+          "fuse" = [
+            "fs"
+            "fuse-backend-rs?/fusedev"
+          ];
           "mocks" = [ "dep:mockall" ];
           "toml" = [ "dep:toml" ];
           "virtiofs" = [
@@ -18463,7 +18467,6 @@ rec {
             "dep:vm-memory"
             "dep:vmm-sys-util"
             "dep:virtio-bindings"
-            "fuse-backend-rs?/vhost-user-fs"
             "fuse-backend-rs?/virtiofs"
           ];
           "xp-composition-cli" = [
@@ -22967,9 +22970,9 @@ rec {
       };
       "vm-memory" = rec {
         crateName = "vm-memory";
-        version = "0.10.0";
+        version = "0.17.1";
         edition = "2021";
-        sha256 = "0z423a8i4s3addq4yjad4ar5l6qwarjwdn94lismbd0mcqv712k8";
+        sha256 = "103kgafjwicn7287jfw2dxmcfvjjpy193pbw6z9sp73896h4i4zk";
         libName = "vm_memory";
         authors = [
           "Liu Jiang <gerry@linux.alibaba.com>"
@@ -22978,11 +22981,17 @@ rec {
           {
             name = "libc";
             packageId = "libc";
+            optional = true;
+          }
+          {
+            name = "thiserror";
+            packageId = "thiserror 2.0.20";
           }
           {
             name = "winapi";
             packageId = "winapi";
-            target = { target, features }: (target."windows" or false);
+            optional = true;
+            target = { target, features }: (builtins.elem "windows" target."family");
             features = [
               "errhandlingapi"
               "sysinfoapi"
@@ -22992,17 +23001,35 @@ rec {
         features = {
           "arc-swap" = [ "dep:arc-swap" ];
           "backend-atomic" = [ "arc-swap" ];
+          "backend-bitmap" = [
+            "dep:libc"
+            "dep:winapi"
+          ];
+          "backend-mmap" = [
+            "dep:libc"
+            "dep:winapi"
+          ];
+          "bitflags" = [ "dep:bitflags" ];
+          "default" = [ "rawfd" ];
+          "rawfd" = [ "dep:libc" ];
+          "vmm-sys-util" = [ "dep:vmm-sys-util" ];
+          "xen" = [
+            "backend-mmap"
+            "bitflags"
+            "vmm-sys-util"
+          ];
         };
         resolvedDefaultFeatures = [
           "backend-mmap"
           "default"
+          "rawfd"
         ];
       };
       "vmm-sys-util" = rec {
         crateName = "vmm-sys-util";
-        version = "0.11.2";
+        version = "0.15.0";
         edition = "2021";
-        sha256 = "0a9azxk6wsahwkggshbdga4jdryzfw6j5r21f11gf50j4f2b1ds8";
+        sha256 = "0bv4l7ihgg0dlqbrdgxlm41mn5dyy6yazyf24xl1g98pyvyn4v2h";
         libName = "vmm_sys_util";
         authors = [
           "Intel Virtualization Team <vmm-maintainers@intel.com>"
@@ -23011,8 +23038,6 @@ rec {
           {
             name = "bitflags";
             packageId = "bitflags 1.3.2";
-            target =
-              { target, features }: (("linux" == target."os" or null) || ("android" == target."os" or null));
           }
           {
             name = "libc";
