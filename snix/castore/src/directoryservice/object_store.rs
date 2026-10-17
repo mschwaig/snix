@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use bytes::Bytes;
 use data_encoding::HEXLOWER;
 use futures::SinkExt;
 use futures::StreamExt;
@@ -296,7 +297,7 @@ impl DirectoryPutter for ObjectStoreDirectoryPutter<'_> {
                 // Drain the graph in *Root-To-Leaves*, order, as that's how we write it to storage.
                 for directory in directory_graph.drain_root_to_leaves() {
                     directories_sink
-                        .send(proto::Directory::from(directory).encode_to_vec().into())
+                        .send(Bytes::from(proto::Directory::from(directory).encode_to_vec()))
                         .await
                         .map_err(Error::IO)?;
                 }
