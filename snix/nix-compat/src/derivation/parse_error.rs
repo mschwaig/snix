@@ -12,6 +12,8 @@ pub type NomResult<I, O> = IResult<I, O, NomError<I>>;
 
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ErrorKind {
+    #[error("output digest requires a hash algorithm and hexadecimal bytes")]
+    InvalidOutputHash,
     /// duplicate key in map
     #[error("duplicate map key: {0}")]
     DuplicateMapKey(String),

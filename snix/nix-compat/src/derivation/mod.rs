@@ -95,6 +95,7 @@ mod output_name;
 pub mod outputs;
 mod parse_error;
 mod parser;
+mod unvalidated;
 mod write;
 
 mod builder;
@@ -112,6 +113,9 @@ pub use output_name::{OutputName, ParseOutputNameError};
 #[doc(inline)]
 pub use outputs::{Outputs, OutputsBuilder, UnverifiedOutputsBuilder};
 pub use parser::Error as ParserError;
+pub use unvalidated::{
+    UnvalidatedDerivation, UnvalidatedOutput, calculate_derivation_path_from_aterm,
+};
 
 /// A verified derivation with its [`StorePath`].
 ///

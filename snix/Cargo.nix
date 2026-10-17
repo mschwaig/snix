@@ -40,6 +40,16 @@ rec {
   # You can override the features with
   # workspaceMembers."${crateName}".build.override { features = [ "default" "feature1" ... ]; }.
   workspaceMembers = {
+    "laut-compat" = rec {
+      packageId = "laut-compat";
+      build = internal.buildRustCrateWithFeatures {
+        packageId = "laut-compat";
+      };
+
+      # Debug support which might change between releases.
+      # File a bug if you depend on any for non-debug work!
+      debug = internal.debugCrate { inherit packageId; };
+    };
     "nar-bridge" = rec {
       packageId = "nar-bridge";
       build = internal.buildRustCrateWithFeatures {
@@ -12453,6 +12463,78 @@ rec {
           "std"
           "unsafe-eval"
         ];
+      };
+      "laut-compat" = rec {
+        crateName = "laut-compat";
+        version = "0.1.0";
+        edition = "2021";
+        crateBin = [
+          {
+            name = "laut-hash-content";
+            path = "src/bin/laut-hash-content.rs";
+            requiredFeatures = [ ];
+          }
+        ];
+        src = lib.cleanSourceWith {
+          filter = sourceFilter;
+          src = ./laut-compat;
+        };
+        libName = "laut_compat";
+        dependencies = [
+          {
+            name = "clap";
+            packageId = "clap";
+            features = [
+              "derive"
+              "env"
+            ];
+          }
+          {
+            name = "data-encoding";
+            packageId = "data-encoding";
+          }
+          {
+            name = "nix-compat";
+            packageId = "nix-compat";
+          }
+          {
+            name = "prost";
+            packageId = "prost";
+          }
+          {
+            name = "sha2";
+            packageId = "sha2 0.10.9";
+          }
+          {
+            name = "snix-castore";
+            packageId = "snix-castore";
+          }
+          {
+            name = "snix-store";
+            packageId = "snix-store";
+          }
+          {
+            name = "thiserror";
+            packageId = "thiserror 2.0.20";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            features = [
+              "io-util"
+              "macros"
+              "sync"
+              "rt"
+            ];
+          }
+        ];
+        devDependencies = [
+          {
+            name = "tempfile";
+            packageId = "tempfile";
+          }
+        ];
+
       };
       "lazy_static" = rec {
         crateName = "lazy_static";

@@ -64,6 +64,12 @@ impl VerifyingKey {
         &self.name
     }
 
+    /// Borrow the inner verifying key so callers can perform `ed25519` verification
+    /// over arbitrary messages (e.g. laut's JWS verification path).
+    pub fn verifying_key(&self) -> &ed25519_dalek::VerifyingKey {
+        &self.verifying_key
+    }
+
     /// Verify the passed in signature is a correct signature for the passed in fingerprint and is signed
     /// by the key material referred to by [Self],
     /// which means the name in the signature has to match,

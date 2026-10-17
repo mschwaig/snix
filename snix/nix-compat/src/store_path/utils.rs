@@ -194,6 +194,38 @@ pub fn hash_placeholder(name: &str) -> String {
     )
 }
 
+/// Calculate Nix's placeholder for an unresolved input derivation output.
+/// `store_prefix` includes the trailing slash (normally `/nix/store/`).
+pub fn hash_upstream_placeholder(
+    store_prefix: &str,
+    drv_path: &str,
+    output_name: &str,
+) -> Result<String, String> {
+    let path = drv_path
+        .strip_prefix(store_prefix)
+        .ok_or_else(|| format!("derivation path is outside {store_prefix}"))?;
+    let path = path
+        .parse::<super::StorePath>()
+        .map_err(|e| e.to_string())?;
+    let drv_name = path
+        .name()
+        .strip_drv_ext()
+        .ok_or("derivation path must end in .drv")?;
+    let output_name = output_name
+        .parse::<OutputName>()
+        .map_err(|e| e.to_string())?;
+    let output_path_name = output_name
+        .build_store_path_name(drv_name)
+        .map_err(|e| e.to_string())?;
+    let drv_hash = nixbase32::encode(path.digest());
+    Ok(format!(
+        "/{}",
+        nixbase32::encode(&format_sha256!(
+            "nix-upstream-output:{drv_hash}:{output_path_name}"
+        ))
+    ))
+}
+
 #[cfg(test)]
 mod test {
     use hex_literal::hex;
@@ -203,6 +235,48 @@ mod test {
 
     fn into_name(name: &'static str) -> &'static StorePathName {
         StorePathName::from_str(name).expect("valid name {name}")
+    }
+
+    #[test]
+    fn upstream_placeholders_validate_paths_and_output_names() {
+        let drv = "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-hello.drv";
+        for (output, name) in [("out", "hello"), ("bin", "hello-bin")] {
+            let expected = format!(
+                "/{}",
+                nixbase32::encode(&format_sha256!(
+                    "nix-upstream-output:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:{name}"
+                ))
+            );
+            assert_eq!(
+                hash_upstream_placeholder("/nix/store/", drv, output).unwrap(),
+                expected
+            );
+        }
+        for path in [
+            "/other/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-hello.drv",
+            "/nix/store/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-hello.drv",
+            "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-hello",
+            "/nix/store/\u{00e9}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-hello.drv",
+        ] {
+            assert!(hash_upstream_placeholder("/nix/store/", path, "out").is_err());
+        }
+        assert!(hash_upstream_placeholder("/nix/store/", drv, "../bad").is_err());
+    }
+
+    #[test]
+    fn recursive_ca_self_reference_changes_path() {
+        let hash = NixHash::Sha256([0; 32]);
+        let plain = build_ca_path(into_name("test"), true, &hash, [], false);
+        let self_ref = build_ca_path(into_name("test"), true, &hash, [], true);
+        assert_ne!(plain, self_ref);
+        assert_eq!(
+            self_ref,
+            build_store_path_from_fingerprint_parts(
+                "source:self",
+                &Sha256::new([0; 32]),
+                into_name("test")
+            )
+        );
     }
 
     #[test]

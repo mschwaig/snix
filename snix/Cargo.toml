@@ -35,6 +35,7 @@ members = [
   "eval",
   "eval/builtin-macros",
   "glue",
+  "laut-compat",
   "nar-bridge",
   "nix-compat",
   "nix-compat-derive",

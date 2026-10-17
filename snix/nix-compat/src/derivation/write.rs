@@ -231,7 +231,7 @@ pub(crate) fn write_field<S: AsRef<[u8]>>(
     Ok(())
 }
 
-fn write_array_elements<S>(
+pub(super) fn write_array_elements<S>(
     writer: &mut impl Write,
     elements: impl IntoIterator<Item = S>,
 ) -> Result<(), io::Error>

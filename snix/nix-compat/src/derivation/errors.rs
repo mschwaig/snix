@@ -7,6 +7,9 @@ use thiserror::Error;
 #[derive(Debug, Error, PartialEq)]
 #[allow(missing_docs)]
 pub enum DerivationError {
+    /// ATerm preimage could not be parsed.
+    #[error("invalid ATerm format: {0}")]
+    InvalidATermError(String),
     #[error("unable to parse derivation name {}: {}", .0.as_bstr(), .1)]
     InvalidDerivationName(Vec<u8>, #[source] store_path::ParseStorePathError),
 

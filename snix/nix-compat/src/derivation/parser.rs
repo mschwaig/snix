@@ -83,19 +83,8 @@ pub fn parse_streaming(i: &[u8]) -> (Result<UnverifiedDerivation, Error<&[u8]>>,
 /// output name, output path, algo (and mode), digest.
 /// Returns the [`OutputName`], output [`StorePath`] and possible FOD [`OutputHash`].
 fn parse_output(i: &[u8]) -> NomResult<&[u8], (OutputName, StorePath, Option<OutputHash>)> {
-    delimited(
-        nomchar('('),
-        map_res(
-            |i| {
-                (
-                    terminated(aterm::parse_string_field, nomchar(',')),
-                    terminated(aterm::parse_string_field, nomchar(',')),
-                    terminated(aterm::parse_string_field, nomchar(',')),
-                    aterm::parse_bytes_field,
-                )
-                    .parse(i)
-                    .map_err(into_nomerror)
-            },
+    map_res(
+            parse_output_fields,
             |(output_name_str, output_path_str, algo_and_mode, encoded_digest)| -> Result<_, nom::Err<NomError<&[u8]>>> {
                 let output_name: OutputName = output_name_str.parse().map_err(|err| {
                     nom::Err::Failure(NomError {
@@ -136,10 +125,25 @@ fn parse_output(i: &[u8]) -> NomResult<&[u8], (OutputName, StorePath, Option<Out
                 };
                 Ok((output_name, path, output_hash))
             },
+    )
+    .parse(i)
+}
+
+pub(super) fn parse_output_fields(
+    i: &[u8],
+) -> NomResult<&[u8], (String, String, String, bstr::BString)> {
+    delimited(
+        nomchar('('),
+        (
+            terminated(aterm::parse_string_field, nomchar(',')),
+            terminated(aterm::parse_string_field, nomchar(',')),
+            terminated(aterm::parse_string_field, nomchar(',')),
+            aterm::parse_bytes_field,
         ),
         nomchar(')'),
     )
     .parse(i)
+    .map_err(into_nomerror)
 }
 
 /// Parse multiple outputs in ATerm. This is a list of things acccepted by
@@ -258,6 +262,15 @@ fn string_to_store_path<'i>(
 }
 
 pub fn parse_derivation(i: &[u8]) -> NomResult<&[u8], (DerivationBuilder, Outputs)> {
+    let (rest, (mut builder, outputs)) = parse_with_outputs(i, parse_outputs)?;
+    builder.outputs = outputs.clone().into_builder();
+    Ok((rest, (builder, outputs)))
+}
+
+pub(super) fn parse_with_outputs<'a, O>(
+    i: &'a [u8],
+    outputs: impl FnMut(&'a [u8]) -> NomResult<&'a [u8], O>,
+) -> NomResult<&'a [u8], (DerivationBuilder, O)> {
     use nom::Parser;
     preceded(
         tag(write::DERIVATION_PREFIX),
@@ -268,7 +281,7 @@ pub fn parse_derivation(i: &[u8]) -> NomResult<&[u8], (DerivationBuilder, Output
             // bit verbose here wrapping generic IResult into [NomATermResult].
             (
                 // parse outputs
-                terminated(parse_outputs, nomchar(',')),
+                terminated(outputs, nomchar(',')),
                 // // parse input derivations
                 terminated(parse_input_derivations, nomchar(',')),
                 // // parse input sources
@@ -306,14 +319,13 @@ pub fn parse_derivation(i: &[u8]) -> NomResult<&[u8], (DerivationBuilder, Output
                 arguments,
                 environment,
             )| {
-                let outputs_builder = outputs.clone().into_builder();
                 let builder = DerivationBuilder {
                     arguments,
                     command,
                     environment,
                     input_derivations,
                     input_sources,
-                    outputs: outputs_builder,
+                    outputs: Default::default(),
                     system,
                 };
                 (builder, outputs)

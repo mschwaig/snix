@@ -172,7 +172,11 @@ impl StorePath {
 /// of the nixbase32-encoded string.
 impl Ord for StorePathRef<'_> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.digest.iter().rev().cmp(other.digest.iter().rev())
+        self.digest
+            .iter()
+            .rev()
+            .cmp(other.digest.iter().rev())
+            .then_with(|| self.name.as_str().cmp(other.name.as_str()))
     }
 }
 
